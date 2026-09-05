@@ -2,8 +2,8 @@
 // je veřejný by design, ochrana běží přes RLS + RPC – viz supabase/schema.sql).
 window.ZD_CONFIG = {
   // Supabase projekt pro žebříček. Když necháš prázdné, hra běží jen s lokálním rekordem.
-  supabaseUrl: "",       // např. "https://xyzabc.supabase.co"
-  supabaseAnonKey: "",   // Project settings -> API -> anon public
+  supabaseUrl: "https://ofozkelnipwozpukbdfg.supabase.co",       // např. "https://xyzabc.supabase.co"
+  supabaseAnonKey: "sb_publishable_o8I4CvJRiM3IeXUI2V24cQ_wEUoYKt4",   // Project settings -> API -> anon public
 
   // AdMob (Capacitor plugin @capacitor-community/admob). Testovací ID Googlu jsou vyplněné,
   // před vydáním nahraď svými.

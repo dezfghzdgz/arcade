@@ -161,3 +161,47 @@ input:focus { outline: none; border-color: var(--aqua); }
 .build-menu button[disabled] { opacity: .35; }
 .build-menu .hd { grid-column: 1 / -1; color: var(--ink-dim); font-size: 11px; font-weight: 800; padding: 2px 4px; }
 #units-btns button.active { background: var(--coral); color: #fff; }
+
+.hud-sliders { position: absolute; left: 14px; bottom: 14px; background: rgba(0,0,0,.5); border-radius: 16px; padding: 10px 14px; display: flex; flex-direction: column; gap: 6px; pointer-events: auto; font-weight: 800; font-size: 13px; }
+.hud-sliders label { display: flex; align-items: center; gap: 8px; }
+.hud-sliders label span { min-width: 120px; }
+.hud-sliders input { width: 160px; accent-color: var(--coral); }
+.radial { position: absolute; pointer-events: none; z-index: 6; }
+.radial button { position: absolute; padding: 0; pointer-events: auto; color: #fff; }
+.radial button[disabled] { opacity: .35; }
+
+/* Front HUD v2 */
+.hud-clock { position: absolute; right: 12px; top: 10px; font-size: 20px; font-weight: 900; background: rgba(0,0,0,.5); padding: 4px 12px; border-radius: 10px; }
+.board { position: absolute; left: 10px; top: 10px; border-collapse: collapse; background: rgba(10,20,40,.85); border-radius: 12px; overflow: hidden; font-size: 12px; font-weight: 800; pointer-events: auto; max-height: 260px; display: block; overflow-y: auto; min-width: 230px; }
+.board th, .board td { padding: 4px 8px; text-align: left; white-space: nowrap; }
+.board th { color: var(--ink-dim); font-size: 11px; background: rgba(255,255,255,.05); position: sticky; top: 0; }
+.board td:nth-child(3), .board td:nth-child(4), .board td:nth-child(5) { text-align: right; font-variant-numeric: tabular-nums; }
+.board tr.me td { background: rgba(94,225,208,.18); }
+.board tr.dead td { opacity: .4; }
+.board .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+.events { position: absolute; right: 12px; bottom: 120px; display: flex; flex-direction: column; gap: 6px; width: 260px; pointer-events: auto; }
+.ev { background: rgba(10,20,40,.9); border-radius: 12px; padding: 8px 12px; font-size: 13px; font-weight: 800; display: flex; flex-direction: column; gap: 6px; border-left: 4px solid var(--aqua); }
+.ev .acts { display: flex; gap: 6px; } .ev .acts button { padding: 4px 12px; font-size: 12px; }
+.bottom { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); background: rgba(10,20,40,.9); border-radius: 16px; padding: 8px 12px; display: flex; flex-direction: column; gap: 6px; pointer-events: auto; min-width: 520px; }
+.bb-row { display: flex; align-items: center; gap: 8px; }
+.bb-tag { font-weight: 900; font-size: 13px; background: rgba(255,255,255,.08); padding: 3px 8px; border-radius: 8px; }
+.bb-tag.gold { color: var(--amber); }
+.bb-bar { flex: 1; height: 22px; background: rgba(255,255,255,.1); border-radius: 8px; position: relative; overflow: hidden; }
+.bb-bar i { position: absolute; left: 0; top: 0; bottom: 0; background: #2F7BEA; width: 0; transition: width .3s; }
+.bb-bar span { position: absolute; inset: 0; display: grid; place-items: center; font-weight: 900; font-size: 13px; }
+.bb-slider { display: flex; align-items: center; gap: 6px; font-weight: 800; font-size: 13px; flex: 1; }
+.bb-slider input { flex: 1; accent-color: var(--coral); }
+.bb-keys { display: flex; gap: 4px; flex-wrap: wrap; }
+.bb-keys button { display: flex; flex-direction: column; align-items: center; padding: 3px 6px; min-width: 44px; font-size: 14px; border-radius: 8px; line-height: 1.1; }
+.bb-keys button small { font-size: 9px; color: var(--ink-dim); }
+.bb-keys button b { font-size: 11px; color: var(--amber); }
+.bb-keys button.armed { background: var(--coral); }
+.bb-keys button[disabled] { opacity: .3; }
+.radial { width: 160px; height: 160px; margin: -80px 0 0 -80px; }
+.radial .q { position: absolute; width: 80px; height: 80px; border-radius: 0; border: 2px solid rgba(255,255,255,.35); font-size: 26px; }
+.radial .q1 { left: 0; top: 0; background: rgba(214,60,80,.92); border-radius: 80px 0 0 0; } .radial .q2 { left: 80px; top: 0; background: rgba(47,123,234,.92); border-radius: 0 80px 0 0; }
+.radial .q3 { left: 0; top: 80px; background: rgba(60,170,90,.92); border-radius: 0 0 0 80px; } .radial .q4 { left: 80px; top: 80px; background: rgba(60,60,70,.92); border-radius: 0 0 80px 0; }
+.radial .center { position: absolute; left: 50px; top: 50px; width: 60px; height: 60px; border-radius: 50%; background: rgba(20,40,77,.98); border: 3px solid #fff; font-size: 24px; }
+.radial .center:hover { background: #2F7BEA; }
+
+.bld-lvl { position: absolute; }

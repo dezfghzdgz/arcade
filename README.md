@@ -6,8 +6,14 @@ Statický web (žádný build): `index.html` rozcestník, `zigdash/`, `splatz/`,
 1. Obsah téhle složky do kořene GitHub repa (GitHub Desktop: zkopírovat do složky repa → Commit → Push).
 2. Vercel importuje repo, nic nenastavuješ. Používej **produkční adresu** (`https://nazev.vercel.app`), ne odkazy z Deployments (ty jsou chráněné přihlášením). Pokud i produkční adresa chce login: Vercel → projekt → Settings → Deployment Protection → Vercel Authentication → vypnout.
 
+## Zapojení Supabase (klíče už jsou vyplněné)
+1. Supabase → **SQL Editor** → New query → vlož celý soubor **`SETUP.sql`** → Run. (Založí žebříček ZigDash, účty, posílání her, Arcade Pass a nákupy z webu.)
+2. Authentication → Providers → Email → vypni „Confirm email" (jinak musí každý potvrdit mail; free tier posílá jen pár mailů denně).
+3. Zaregistruj se na webu, pak v SQL: `update public.profiles set is_admin = true where id = '<tvoje uuid>'` (Authentication → Users). Objeví se ti „Review queue".
+4. Multiplayer (Splatz, Tower, Front) nepotřebuje nic dalšího – jede přes Realtime kanály. V lobby už nebude „local (dev)", ale „online".
+
 ## Účty, posílání her, schvalování
-1. Supabase → SQL editor → spusť `supabase/hub.sql`.
+1. Supabase → SQL editor → spusť `SETUP.sql` (viz výše).
 2. Authentication → Providers → Email: nech zapnuté; pro rychlý start vypni „Confirm email" (jinak musí uživatel potvrdit e-mail – Supabase free tier posílá jen pár mailů denně).
 3. URL + anon key do `config.js` (stejné jako v hrách).
 4. Zaregistruj se na webu, pak v SQL: `update public.profiles set is_admin = true where id = '<tvoje uuid>'` (uuid najdeš v Authentication → Users). Od té chvíle máš v menu „Review queue".

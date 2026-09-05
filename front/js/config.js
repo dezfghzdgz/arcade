@@ -1,5 +1,5 @@
 window.FR_CONFIG = {
-  supabaseUrl: "", supabaseAnonKey: "", webUrl: "",
+  supabaseUrl: "https://ofozkelnipwozpukbdfg.supabase.co", supabaseAnonKey: "sb_publishable_o8I4CvJRiM3IeXUI2V24cQ_wEUoYKt4", webUrl: "",
   admob: { androidBanner: "", androidRewarded: "", iosBanner: "", iosRewarded: "" },
   iap: {
     remove_ads: { id: "front_noads_monthly", coins: 0, price: "€3.99", subscription: true },
@@ -9,27 +9,31 @@ window.FR_CONFIG = {
   revenueCatEntitlement: "no_ads",
   stripe: { links: { remove_ads: "", coins_500: "", coins_2000: "" } },
   tuning: {
-    maxPlayers: 8,
+    maxPlayers: 8, maxNations: 64,   // lidí max 8, s boty až 64 národů
     drawSeconds: 12, spawnSeconds: 8,
-    growBase: 3, growPerCell: 0.05, maxBase: 150, maxPerCell: 5,   // vojáci
-    goldBase: 1, goldPerCell: 0.02, startGold: 100,                 // zlato
-    costNeutral: 1.2, costEnemyBase: 2.5, attackSpeed: 26,
-    boatSpeed: 30,        // polí/s
+    growBase: 4, growPerCell: 0.035, maxBase: 200, maxPerCell: 3.5,   // vojáci
+    goldBase: 1.5, goldPerCell: 0.02, startGold: 250,                 // zlato ze základu (zbytek dělníci, obchod, vlaky)
+    workerGold: 0.05,     // zlato/s za pole území × podíl dělníků
+    tradeEvery: 9, tradeSpeed: 9, tradeGold: 1.4,   // obchodní lodě: interval spawnu, rychlost, zlato za pole vzdálenosti
+    trainEvery: 6, trainSpeed: 22, trainGold: 0.7, trainRange: 140,
+    allianceSeconds: 600,
+    costNeutral: 0.8, costEnemyBase: 1.8, attackSpeed: 45,
+    boatSpeed: 14,        // polí/s (lodě jedou pomalu jako v originále)
     nukeFlight: 3,        // s
     winShare: 0.6,
     tickRate: 20, snapRate: 5,
   },
   // jednotky a stavby: cena ve zlatě, popis efektu je v README
   units: {
-    city:     { cost: 125, troopCap: 250, grow: 1.5 },
-    defense:  { cost: 60,  radius: 7, mult: 2.5 },
-    port:     { cost: 125 },
-    silo:     { cost: 200 },
-    sam:      { cost: 150, radius: 12, chance: 0.75 },
-    factory:  { cost: 100, gold: 1.2 },
-    warship:  { cost: 150, radius: 5 },
-    atom:     { cost: 300,  radius: 7 },
-    hydrogen: { cost: 900,  radius: 12 },
-    mirv:     { cost: 2200, radius: 6, count: 5, spread: 18 },
+    city:     { cost: 125, troopCap: 250, grow: 1.5, trainGold: 30 },
+    defense:  { cost: 60,  radius: 10, mult: 2.5 },
+    port:     { cost: 125, trainGold: 40 },
+    silo:     { cost: 150 },
+    sam:      { cost: 150, radius: 18, chance: 0.75 },
+    factory:  { cost: 125 },
+    warship:  { cost: 150, radius: 8 },
+    atom:     { cost: 250,  radius: 10 },
+    hydrogen: { cost: 800,  radius: 18 },
+    mirv:     { cost: 2000, radius: 9, count: 5, spread: 26 },
   },
 };

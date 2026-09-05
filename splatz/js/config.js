@@ -2,8 +2,8 @@
 window.SZ_CONFIG = {
   // Supabase – používá se pro MULTIPLAYER (Realtime kanály) i pro nákupy z webu.
   // Když je prázdné, hra běží jen solo proti botům + "místní" multiplayer mezi taby jednoho prohlížeče (pro vývoj).
-  supabaseUrl: "",
-  supabaseAnonKey: "",
+  supabaseUrl: "https://ofozkelnipwozpukbdfg.supabase.co",
+  supabaseAnonKey: "sb_publishable_o8I4CvJRiM3IeXUI2V24cQ_wEUoYKt4",
 
   // URL webové verze – do sdíleného odkazu na místnost (prázdné = aktuální adresa)
   webUrl: "",

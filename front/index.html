@@ -19,16 +19,21 @@
 
     <!-- HUD -->
     <div id="hud" class="screen hidden">
-      <div class="hud-top">
-        <div id="hud-time">0:00</div>
-        <div id="hud-phase" class="hud-phase"></div>
-        <div id="hud-troops" class="hud-troops"></div>
+      <div id="hud-time" class="hud-clock">0:00</div>
+      <div id="hud-phase" class="hud-phase"></div>
+      <table id="hud-board" class="board"><thead><tr><th>#</th><th data-i18n="thName">Name</th><th>%</th><th>●</th><th>⚔</th></tr></thead><tbody></tbody></table>
+      <div id="events" class="events"></div>
+      <div id="bottom" class="bottom hidden">
+        <div class="bb-row"><span id="bb-grow" class="bb-tag">+0/s</span><div class="bb-bar"><i id="bb-fill"></i><span id="bb-troops">0 / 0</span></div><span id="bb-gold" class="bb-tag gold">● 0</span></div>
+        <div class="bb-row"><label class="bb-slider"><span>⚔</span><b id="ratio-val">50 %</b><input id="ratio" type="range" min="10" max="100" step="5" value="50" /></label><label class="bb-slider"><span>👷</span><b id="work-val">70 %</b><input id="work" type="range" min="20" max="100" step="5" value="70" /></label></div>
+        <div id="bb-keys" class="bb-keys"></div>
       </div>
-      <div id="hud-board" class="hud-board"></div>
-      <div id="hud-ratio" class="hud-ratio hidden"><span data-i18n="attackWith">Attack with</span> <b id="ratio-val">50 %</b><input id="ratio" type="range" min="10" max="100" step="5" value="50" /><span id="hud-gold" class="gold"></span></div>
+      <div id="hud-brush" class="hud-ratio hidden"><button id="brush-land" class="active">▮ <span data-i18n="land">Land</span></button><button id="brush-water">▮ <span data-i18n="water">Water</span></button></div>
       <div id="hud-tool" class="hud-tool hidden"><span id="tool-label"></span> <button id="tool-cancel">✕</button></div>
       <div id="build-menu" class="build-menu hidden"></div>
-      <div id="hud-brush" class="hud-ratio hidden"><button id="brush-land" class="active">▮ <span data-i18n="land">Land</span></button><button id="brush-water">▮ <span data-i18n="water">Water</span></button><span id="brush-hint" class="dim"></span></div>
+      <div id="radial" class="radial hidden">
+        <button data-r="attack" class="q q1" title="Attack">⚔</button><button data-r="boat" class="q q2" title="Boat">⛵</button><button data-r="ally" class="q q3" title="Alliance">🤝</button><button data-r="info" class="q q4" title="Info">ℹ</button><button data-r="build" class="center" title="Build">⚒</button>
+      </div>
       <div id="hud-hint" class="hud-hint"></div>
       <button id="btn-spec-leave" class="spec-leave hidden" data-i18n="leave">Leave</button>
     </div>
@@ -83,6 +88,7 @@
         <div class="set-row" id="target-row"><span data-i18n="target">Target</span><div id="target-btns" class="seg"></div></div>
         <div class="set-row"><span data-i18n="drawMap">Map</span><div id="pu-btns" class="seg"></div></div>
         <div class="set-row"><span data-i18n="disable">Disable</span><div id="units-btns" class="seg"></div></div>
+        <div class="set-row"><span data-i18n="nations">Nations</span><div id="nations-btns" class="seg"></div></div>
         <div class="set-row"><span data-i18n="bots">Bots</span><div id="bots-btns" class="seg"></div></div>
       </div>
       <div id="lobby-count" class="lb-status"></div>

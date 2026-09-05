@@ -1,5 +1,5 @@
 window.TW_CONFIG = {
-  supabaseUrl: "", supabaseAnonKey: "", webUrl: "",
+  supabaseUrl: "https://ofozkelnipwozpukbdfg.supabase.co", supabaseAnonKey: "sb_publishable_o8I4CvJRiM3IeXUI2V24cQ_wEUoYKt4", webUrl: "",
   admob: { androidBanner: "ca-app-pub-3940256099942544/6300978111", androidRewarded: "ca-app-pub-3940256099942544/5224354917", iosBanner: "ca-app-pub-3940256099942544/2934735716", iosRewarded: "ca-app-pub-3940256099942544/1712485313" },
   iap: {
     remove_ads: { id: "tower_noads_monthly", coins: 0, price: "€3.99", subscription: true },
