@@ -41,6 +41,8 @@ window.Storage = (() => {
     cos[k] = { active: get(KIND_KEYS[k][0], DEFAULTS[k]), owned: get(KIND_KEYS[k][1], [DEFAULTS[k]]) };
   }
 
+  // jméno z účtu Arcade (přihlášení na rozcestníku) má přednost, dokud si ho hráč nepřepíše ve hře
+  try { const an = localStorage.getItem("arcade_name"); if (an && (!state.name || state.nameFromHub === true || localStorage.getItem("arcade_name_used") !== an)) { state.name = an.slice(0, 12); set(K.name, state.name); localStorage.setItem("arcade_name_used", an); } } catch {}
   return {
     active(kind) { return cos[kind].active; },
     setActive(kind, id) { cos[kind].active = id; set(KIND_KEYS[kind][0], id); },

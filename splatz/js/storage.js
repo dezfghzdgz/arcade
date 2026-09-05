@@ -10,6 +10,7 @@ window.Storage = (() => {
     opts: get("sz_opts", { target: 0, pu: "normal", bots: "mix" }),
   };
   if (!st.device) { st.device = crypto.randomUUID ? crypto.randomUUID() : "d-" + Math.random().toString(36).slice(2) + Date.now(); set("sz_device", st.device); }
+  try { const an = localStorage.getItem("arcade_name"); if (an && localStorage.getItem("arcade_name_used") !== an) { st.name = an.slice(0, 12); set("sz_name", st.name); localStorage.setItem("arcade_name_used", an); } } catch {}
   return {
     get name() { return st.name; }, setName(v) { st.name = v; set("sz_name", v); },
     get coins() { return st.coins; }, addCoins(n) { st.coins = Math.max(0, st.coins + n); set("sz_coins", st.coins); },

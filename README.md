@@ -20,6 +20,11 @@ Statický web (žádný build): `index.html` rozcestník, `zigdash/`, `splatz/`,
 
 Tok: hráč se přihlásí → „Submit a game" (název, popis, odkaz na hru hostovanou kdekoliv, ikona) → ty ve frontě schválíš/zamítneš s poznámkou → schválená hra se objeví v sekci „From the community" s jménem autora a otevírá se v nové záložce.
 
+## Nové hry
+- **Doodle** (`doodle/`) – tichá pošta: napiš → nakresli → uhodni, 2–10 hráčů, alba na konci. Hostitel ovládá ukazování alb.
+- **Merge** (`merge/`) – sólo 2048 s denní výzvou (stejný seed pro všechny) a globálním žebříčkem. Žebříček potřebuje **`SETUP2.sql`** (obecná tabulka pro další hry).
+- Jméno z účtu Arcade se automaticky přebírá do všech her (dokud si ho hráč ve hře nepřepíše).
+
 ## Arcade Pass (Stripe)
 1. Stripe → Products → „Arcade Pass", recurring monthly (€3.99) → Payment Link; After payment → `https://tvoje-adresa/?paid=1`. URL do `config.js → stripePassLink`.
 2. Nasaď webhook: `supabase functions deploy arcade-stripe --no-verify-jwt`, `supabase secrets set STRIPE_SECRET_KEY=sk_… STRIPE_WEBHOOK_SECRET=whsec_…` (**tajný klíč nikam jinam nedávej**, ani do chatu).
