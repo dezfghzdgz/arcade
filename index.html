@@ -6,6 +6,9 @@
   <meta name="theme-color" content="#160B2E" />
   <meta name="description" content="Quick games for your phone or a bored moment at school. Solo or with friends over one link." />
   <title>Arcade</title>
+  <link rel="icon" href="icon-192.png" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
+  <link rel="manifest" href="manifest.webmanifest" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;900&display=swap" rel="stylesheet" />
   <style>
@@ -23,7 +26,11 @@
     .card p { margin: 0; color: var(--dim); font-weight: 700; line-height: 1.4; }
     .card img { width: 64px; height: 64px; border-radius: 16px; float: right; margin-left: 12px; }
     .soon { opacity: .55; pointer-events: none; }
-    .foot { margin-top: 32px; color: var(--dim); font-size: 13px; font-weight: 700; }
+    .foot { margin-top: 32px; color: var(--dim); font-size: 13px; font-weight: 700; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+    .kine { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; color: var(--ink); background: rgba(255,255,255,.06); border: 2px solid rgba(255,255,255,.1); border-radius: 999px; padding: 8px 16px 8px 10px; transition: border-color .12s ease; }
+    .kine:hover { border-color: rgba(255,255,255,.3); }
+    .kine b { color: var(--amber); }
+    .kine .k { width: 26px; height: 26px; border-radius: 8px; background: linear-gradient(135deg, var(--coral), var(--amber)); display: grid; place-items: center; font-weight: 900; color: #2A1600; font-size: 14px; }
     .foot button { background: none; border: none; color: var(--dim); font: inherit; cursor: pointer; text-decoration: underline; }
   </style>
 </head>
@@ -44,6 +51,12 @@
       <h2>Splatz</h2>
       <p data-i18n="splatz">Paint arena for up to 8. Share a code, fill the rest with bots. 5 modes.</p>
     </a>
+    <a class="card friends" href="polar/">
+      <img src="polar/icon-192.png" alt="" />
+      <span class="tag" data-i18n="friends">WITH FRIENDS</span>
+      <h2>Polar</h2>
+      <p data-i18n="polar">Everyone is a magnet. Flip your pole, pull coins, drag rivals into pits.</p>
+    </a>
     <div class="card soon">
       <span class="tag" data-i18n="soon">COMING SOON</span>
       <h2>???</h2>
@@ -51,12 +64,15 @@
     </div>
   </div>
 
-  <div class="foot"><button id="lang">Čeština</button></div>
+  <div class="foot">
+    <a class="kine" href="https://kine-lac.vercel.app" target="_blank" rel="noopener"><span class="k">K</span><span><span data-i18n="kine">Also by us:</span> <b>Kine</b> <span data-i18n="kineDesc">– videos, live, creators</span></span></a>
+    <button id="lang">Čeština</button>
+  </div>
 
   <script>
     const T = {
-      en: { sub: "Quick games. Solo or with friends over one link.", solo: "SOLO", friends: "WITH FRIENDS", soon: "COMING SOON", zigdash: "Tap, flip, dodge. One thumb, leaderboard, daily missions.", splatz: "Paint arena for up to 8. Share a code, fill the rest with bots. 5 modes.", next: "Next game goes here.", lang: "Čeština" },
-      cs: { sub: "Rychlé hry. Sólo nebo s kamarády přes jeden odkaz.", solo: "SÓLO", friends: "S KAMARÁDY", soon: "BRZY", zigdash: "Ťukni, otoč se, uhni. Jeden palec, žebříček, denní úkoly.", splatz: "Malovací aréna až pro 8. Pošli kód, zbytek doplní boti. 5 módů.", next: "Tady bude další hra.", lang: "English" },
+      en: { sub: "Quick games. Solo or with friends over one link.", solo: "SOLO", friends: "WITH FRIENDS", soon: "COMING SOON", zigdash: "Tap, flip, dodge. One thumb, leaderboard, daily missions.", splatz: "Paint arena for up to 8. Share a code, fill the rest with bots. 5 modes.", next: "Next game goes here.", polar: "Everyone is a magnet. Flip your pole, pull coins, drag rivals into pits.", lang: "Čeština", kine: "Also by us:", kineDesc: "– videos, live, creators" },
+      cs: { sub: "Rychlé hry. Sólo nebo s kamarády přes jeden odkaz.", solo: "SÓLO", friends: "S KAMARÁDY", soon: "BRZY", zigdash: "Ťukni, otoč se, uhni. Jeden palec, žebříček, denní úkoly.", splatz: "Malovací aréna až pro 8. Pošli kód, zbytek doplní boti. 5 módů.", next: "Tady bude další hra.", polar: "Každý je magnet. Přepni pól, přitáhni mince, stáhni soupeře do díry.", lang: "English", kine: "Také od nás:", kineDesc: "– videa, živě, tvůrci" },
     };
     let lang = localStorage.getItem("arcade_lang") || "en";
     const apply = () => { document.documentElement.lang = lang; document.querySelectorAll("[data-i18n]").forEach(el => el.textContent = T[lang][el.dataset.i18n]); document.getElementById("lang").textContent = T[lang].lang; };

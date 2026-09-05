@@ -1,6 +1,6 @@
 (() => {
   const $ = (id) => document.getElementById(id);
-  const T = SZ_CONFIG.tuning;
+  const T = PL_CONFIG.tuning;
   const screens = ["menu", "hud", "lobby", "results", "shop", "missions"];
   const isTouch = matchMedia("(pointer: coarse)").matches;
   const MODES = Object.keys(Sim.MODES), LENGTHS = [30, 60, 90, 120];
@@ -10,11 +10,11 @@
   let world = null, cw = null, view = null;
   const defOpts = () => Object.assign({ target: 0, pu: "normal", bots: "mix" }, Storage.opts);
   let lobby = { code: "", hostId: null, players: [], mode: Storage.lastMode, seconds: Storage.lastSeconds, opts: defOpts() };
-  const TARGETS = { deathmatch: [0, 5, 10, 20], race: [0, 5, 10, 15], koth: [0, 15, 30, 60] };
+  const TARGETS = { coins: [0, 20, 40, 60], sumo: [0, 5, 10, 15] };
   let phase = "menu";
   let myResult = null, doubled = false, runStats = null, roundStart = 0;
   let hostTimer = null, clientTimer = null, snapAcc = 0, fullAcc = 0, inputAcc = 0, snapDirty = [], snapEvents = [], lastInputSent = "";
-  const input = { dx: 0, dy: 0, dash: false };
+  const input = { dx: 0, dy: 0, flip: false };
   const remote = new Map();
 
   function show(id) { screens.forEach(s => $(s).classList.toggle("hidden", s !== id)); if (id === "menu" || id === "results") Monetization.showBanner(); else Monetization.hideBanner(); }
@@ -38,7 +38,7 @@
     Sim.COLORS.forEach((c, i) => { const b = document.createElement("button"); b.style.background = c; b.className = Storage.color === i ? "active" : ""; b.onclick = () => { Storage.setColor(i); Audio2.ui(); refreshMenu(); }; cr.appendChild(b); });
     const loc = Lang.current() === "cs" ? "cs-CZ" : "en-US";
     $("lbl-coins_500").textContent = Lang("coins", (500).toLocaleString(loc)); $("lbl-coins_2000").textContent = Lang("coins", (2000).toLocaleString(loc));
-    for (const k of Object.keys(SZ_CONFIG.iap)) { const el = $("price-" + k), p = SZ_CONFIG.iap[k]; if (el && p.price) el.textContent = p.price + (p.subscription ? Lang("perMonth") : ""); }
+    for (const k of Object.keys(PL_CONFIG.iap)) { const el = $("price-" + k), p = PL_CONFIG.iap[k]; if (el && p.price) el.textContent = p.price + (p.subscription ? Lang("perMonth") : ""); }
     const sub = document.querySelector('[data-iap="remove_ads"]'); const active = Storage.noAdsUntil > Date.now();
     sub.disabled = active; sub.querySelector("span").textContent = active ? Lang("subActive", new Date(Storage.noAdsUntil).toLocaleDateString()) : Lang("removeAds");
   }
@@ -83,7 +83,7 @@
     toast(pl.name + " →"); syncLobby();
     if (phase === "game") sendFull(from);
   });
-  Net.on("input", (p, from) => { if (role !== "host" || !world) return; const pl = world.players.find(x => x.id === from); if (!pl) return; pl.input.dx = p[0]; pl.input.dy = p[1]; if (p[2]) pl.input.dash = true; });
+  Net.on("input", (p, from) => { if (role !== "host" || !world) return; const pl = world.players.find(x => x.id === from); if (!pl) return; pl.input.dx = p[0]; pl.input.dy = p[1]; if (p[2]) pl.input.flip = true; });
   Net.on("leave", ({ id }) => {
     if (role === "host") { if (world && world.players.find(x => x.id === id)) { Sim.removePlayer(world, id); if (phase === "game") { world.players.forEach(p => p.score = p.score); } syncLobby(); } }
     else if (role === "client" && id === lobby.hostId) { leaveToMenu(); toast(Lang("hostLeft"), 3000); }
@@ -103,6 +103,7 @@
     renderLobby();
   }
   function renderLobby() {
+    if (!Sim.MODES[lobby.mode]) lobby.mode = MODES[0];
     $("lobby-count").textContent = Lang("players", lobby.players.length, T.maxPlayers);
     const teams = Sim.MODES[lobby.mode].teams;
     $("lobby-list").innerHTML = lobby.players.map((p, i) => `<div class="lobby-p"><span class="dot" style="background:${teams ? Sim.TEAM_COLORS[i % 2] : Sim.COLORS[p.ci]}"></span><span></span><small>${p.id === Net.myId ? Lang("you") : p.id === lobby.hostId ? Lang("host") : p.bot ? Lang("bot") + (p.skill !== undefined ? " · " + Lang.tier(Sim.skillTier(p.skill)) : "") : ""}</small></div>`).join("");
@@ -128,35 +129,32 @@
 
   // ---------- kolo (solo/host)
   function startRound() {
-    doubled = false; myResult = null; runStats = { dashes: 0, kos: 0, powerups: 0, captures: 0 };
+    doubled = false; myResult = null; runStats = { coins: 0, kos: 0, flips: 0, powerups: 0 };
     Sim.resetRound(world, Date.now(), { mode: lobby.mode, seconds: lobby.seconds, target: lobby.opts.target, pu: lobby.opts.pu, bots: lobby.opts.bots });
-    Render.setPalette(Sim.palette(world));
     lobby.players = Sim.lobbyInfo(world);
     if (role === "host") Net.send("start", { seed: world.seed, mode: lobby.mode, seconds: lobby.seconds, opts: lobby.opts, players: lobby.players });
     phase = "game"; roundStart = performance.now();
-    beginGameUI(); Render.fullPaint(world.paint); hostLoopStart();
+    beginGameUI(); hostLoopStart();
   }
   function hostLoopStart() {
     hostLoopStop(); let last = performance.now();
     hostTimer = setInterval(() => {
       const now = performance.now(), dt = Math.min(0.1, (now - last) / 1000); last = now;
       const mp = world.players.find(p => p.id === Net.myId);
-      if (mp) { mp.input.dx = input.dx; mp.input.dy = input.dy; if (input.dash) mp.input.dash = true; input.dash = false; }
+      if (mp) { mp.input.dx = input.dx; mp.input.dy = input.dy; if (input.flip) mp.input.flip = true; input.flip = false; }
       Sim.step(world, dt);
       handleEvents(world.events);
-      if (world.dirty.length) { Render.applyDeltas(world.dirty); if (role === "host") snapDirty.push(...world.dirty); world.dirty = []; }
       if (role === "host") {
         snapEvents.push(...world.events); snapAcc += dt; fullAcc += dt;
-        if (snapAcc >= 1 / T.snapRate) { snapAcc = 0; Net.send("snap", snapPayload(snapDirty, snapEvents)); snapDirty = []; snapEvents = []; }
+        if (snapAcc >= 1 / T.snapRate) { snapAcc = 0; Net.send("snap", snapPayload(snapEvents)); snapEvents = []; }
         if (fullAcc >= 4) { fullAcc = 0; sendFull(); }
       }
       if (world.phase === "end" && phase === "game") endRound(world.results);
     }, 1000 / T.tickRate);
   }
   function hostLoopStop() { clearInterval(hostTimer); hostTimer = null; }
-  function objPayload() { const o = world.objective; if (!o) return null; const h = o.holder && world.players.find(p => p.id === o.holder); return { kind: o.kind, x: o.x, y: o.y, r: o.r, contested: !!o.contested, holderColor: h ? Sim.colorOf(world, h) : null }; }
-  function snapPayload(d, ev) { return { p: Sim.packPlayers(world), d, t: Math.round(world.time * 10) / 10, ph: world.phase, cd: world.countdown, pu: world.powerups, ev, obj: objPayload(), pr: world.projectiles.map(pr => { const o = world.players.find(p => p.slot === pr.owner); return { x: pr.x, y: pr.y, color: o ? Sim.colorOf(world, o) : "#000" }; }) }; }
-  function sendFull(to) { Net.send("full", Object.assign(snapPayload([], []), { paint: Sim.packPaint(world), seed: world.seed, mode: world.mode, seconds: world.roundSeconds, opts: lobby.opts, players: lobby.players }), to); }
+  function snapPayload(ev) { return { p: Sim.packPlayers(world), c: Sim.packCoins(world), t: Math.round(world.time * 10) / 10, ph: world.phase, cd: world.countdown, pu: world.powerups, ev }; }
+  function sendFull(to) { Net.send("full", Object.assign(snapPayload([]), { full: 1, seed: world.seed, mode: world.mode, seconds: world.roundSeconds, opts: lobby.opts, players: lobby.players }), to); }
 
   // ---------- klient
   $("btn-join").onclick = () => join($("code-input").value.trim().toUpperCase());
@@ -175,44 +173,42 @@
   Net.on("lobby", (p) => { if (role !== "client") return; lobby = { code: p.code, hostId: p.hostId, players: p.players, mode: p.mode, seconds: p.seconds, opts: p.opts || defOpts() }; clearTimeout(joinTimeout); if (phase === "results" && p.phase === "lobby") openLobby(Net.kind); else if (phase !== "game") renderLobby(); });
   Net.on("full", (p) => {
     if (role !== "client") return;
-    if (!p.paint && !lobby.hostId) { leaveToMenu(); toast(Lang("roomFull"), 3000); return; }
-    if (!p.paint) return;
+    if (!p.full && !lobby.hostId) { leaveToMenu(); toast(Lang("roomFull"), 3000); return; }
+    if (!p.full) return;
     if (phase !== "game") clientStart(p.seed, p.mode, p.seconds, p.players, p.opts);
-    Sim.unpackPaint(cw, p.paint); Render.fullPaint(cw.paint); applySnap(p);
+    applySnap(p);
   });
   Net.on("start", (p) => { if (role === "client") clientStart(p.seed, p.mode, p.seconds, p.players, p.opts); });
-  Net.on("snap", (p) => { if (role !== "client" || phase !== "game") return; if (p.d && p.d.length) { for (const d of p.d) { const idx = d >> 4, o = d & 15; cw.counts[cw.paint[idx]]--; cw.paint[idx] = o; cw.counts[o]++; } Render.applyDeltas(p.d); } applySnap(p); });
+  Net.on("snap", (p) => { if (role !== "client" || phase !== "game") return; applySnap(p); });
   Net.on("end", (p) => { if (role === "client") endRound(p.results); });
 
   function clientStart(seed, mode, seconds, players, opts) {
-    doubled = false; myResult = null; runStats = { dashes: 0, kos: 0, powerups: 0, captures: 0 };
+    doubled = false; myResult = null; runStats = { coins: 0, kos: 0, flips: 0, powerups: 0 };
     lobby.players = players; lobby.mode = mode; lobby.seconds = seconds; if (opts) lobby.opts = opts;
     cw = Sim.create(seed, { mode, seconds, client: true, target: lobby.opts.target, pu: lobby.opts.pu });
     const idx = players.findIndex(p => p.id === Net.myId);
     const info = players[idx] || { name: myName(), hat: Storage.hat, ci: 0 };
     const m = Sim.addPlayer(cw, { id: Net.myId, name: info.name, hat: info.hat, pattern: info.pattern });
-    m.slot = Math.max(0, idx); m.team = m.slot % 2; m.ci = info.ci;
-    Render.setPalette(cw.teams ? Sim.TEAM_COLORS : players.map(p => Sim.COLORS[p.ci]));
+    m.slot = Math.max(0, idx); m.team = m.slot % 2; m.ci = info.ci; m.pol = m.slot % 2 ? -1 : 1;
     remote.clear();
-    view = { obstacles: cw.obstacles, players: [], powerups: [], projectiles: [], objective: null, time: seconds, phase: "countdown", countdown: 3 };
+    view = { pits: cw.pits, players: [], coins: [], powerups: [], time: seconds, phase: "countdown", countdown: 3 };
     phase = "game"; roundStart = performance.now();
-    beginGameUI(); Render.fullPaint(cw.paint); clientLoopStart();
+    beginGameUI(); clientLoopStart();
   }
   function applySnap(p) {
-    Object.assign(view, { time: p.t, phase: p.ph, countdown: p.cd, powerups: p.pu || [], projectiles: p.pr || [], objective: p.obj || null });
+    Object.assign(view, { time: p.t, phase: p.ph, countdown: p.cd, powerups: p.pu || [], coins: (p.c || []).map(c => ({ id: c[0], x: c[1], y: c[2], pol: c[3] })) });
     cw.phase = p.ph; cw.powerups = view.powerups;
     for (const a of p.p) {
-      const [id, x, y, dir, fl, gun, cd, score] = a;
-      const flags = { stun: !!(fl & 1), dash: !!(fl & 2), boost: !!(fl & 4), dead: !!(fl & 8), shield: !!(fl & 16), giant: !!(fl & 32), frozen: !!(fl & 64), bomb: !!(fl & 128), frenzy: !!(fl & 256) };
+      const [id, x, y, dir, fl, pol, score] = a;
+      const flags = { stun: !!(fl & 1), dead: !!(fl & 8), shield: !!(fl & 16), magnet: !!(fl & 32), heavy: !!(fl & 64) };
       if (id === Net.myId) {
         const m = cw.players[0]; const d = Math.hypot(m.x - x, m.y - y);
-        if (d > 40 || m.stun > 0 || flags.stun || flags.dead) { m.x = x; m.y = y; } else { m.x += (x - m.x) * 0.25; m.y += (y - m.y) * 0.25; }
-        m.stun = flags.stun ? Math.max(m.stun, 0.3) : 0; m.speedBoost = flags.boost ? Math.max(m.speedBoost, 0.3) : 0; m.shield = flags.shield; m.giant = flags.giant ? Math.max(m.giant, 0.3) : 0; m.gun = gun; m.dead = flags.dead ? 1 : 0; m.score = score; m.frozen = flags.frozen ? 0.3 : 0; m.bomb = flags.bomb ? Math.max(m.bomb, 0.3) : 0; m.frenzy = flags.frenzy ? Math.max(m.frenzy, 0.3) : 0;
-        if (cd === 0) m.dashCd = 0;
+        if (d > 30 || flags.stun || flags.dead) { m.x = x; m.y = y; } else { m.x += (x - m.x) * 0.35; m.y += (y - m.y) * 0.35; }
+        m.stun = flags.stun ? 0.3 : 0; m.shield = flags.shield ? 0.3 : 0; m.magnet = flags.magnet ? 0.3 : 0; m.heavy = flags.heavy ? 0.3 : 0; m.dead = flags.dead ? 1 : 0; m.score = score; m.pol = pol;
         continue;
       }
       let r = remote.get(id); if (!r) { r = { x, y, dx: x, dy: y, dir }; remote.set(id, r); }
-      Object.assign(r, flags, { tx: x, ty: y, dir, gun, score });
+      Object.assign(r, flags, { tx: x, ty: y, dir, pol, score });
     }
     if (p.ev && p.ev.length) handleEvents(p.ev);
   }
@@ -222,12 +218,11 @@
       const now = performance.now(), dt = Math.min(0.1, (now - last) / 1000); last = now;
       const m = cw.players[0];
       m.input.dx = input.dx; m.input.dy = input.dy;
-      const dashNow = input.dash; input.dash = false;
-      if (dashNow) { m.input.dash = true; if (cw.phase === "play" && m.stun <= 0 && (m.gun > 0 || m.dashCd <= 0)) Audio2.dash(); }
-      if (cw.phase === "play" && m.dead <= 0) Sim.movePlayer(cw, m, dt);
-      if (cw.dirty.length) { Render.applyDeltas(cw.dirty); cw.dirty = []; }
+      const flipNow = input.flip; input.flip = false;
+      if (flipNow) { m.input.flip = true; if (cw.phase === "play" && m.flipCd <= 0) { m.pol = -m.pol; Audio2.dash(); } }
+      if (cw.phase === "play" && m.dead <= 0) { m.input.flip = false; Sim.movePlayer(cw, m, dt); Sim.integrate(cw, m, dt); }
       inputAcc += dt; const key = input.dx.toFixed(2) + "," + input.dy.toFixed(2);
-      if (dashNow || key !== lastInputSent || inputAcc >= 0.1) { inputAcc = 0; lastInputSent = key; Net.send("input", [Math.round(input.dx * 100) / 100, Math.round(input.dy * 100) / 100, dashNow ? 1 : 0], lobby.hostId); }
+      if (flipNow || key !== lastInputSent || inputAcc >= 0.1) { inputAcc = 0; lastInputSent = key; Net.send("input", [Math.round(input.dx * 100) / 100, Math.round(input.dy * 100) / 100, flipNow ? 1 : 0], lobby.hostId); }
     }, 1000 / 30);
   }
 
@@ -241,17 +236,13 @@
       else if (e.t === "go") { Audio2.go(); Render.popup(Sim.W / 2, Sim.H / 2 - 60, Lang("go"), "#fff"); }
       else if (e.t === "tick") Audio2.tick();
       else if (e.t === "end") Audio2.whistle();
-      else if (e.t === "dash") { Render.burst(e.x, e.y, colorOf(e.id), 8, 120); if (mine) { runStats.dashes++; if (role !== "client") Audio2.dash(); vibrate(8); } }
-      else if (e.t === "shoot") { Render.burst(e.x, e.y, colorOf(e.id), 4, 80); if (mine && role !== "client") Audio2.dash(); }
-      else if (e.t === "splash") { Render.burst(e.x, e.y, e.color, 10, 140); }
-      else if (e.t === "bump") { Render.kick(e.victim === Net.myId ? 1 : 0.4); Render.burst(e.x, e.y, "#fff", 10, 160); Audio2.bump(); if (e.victim === Net.myId) { Audio2.stunned(); vibrate([30, 30, 60]); } }
-      else if (e.t === "ko") { if (e.by === Net.myId) runStats.kos++; Render.popup(e.x, e.y - 20, Lang("ko", nameOf(e.by), nameOf(e.victim)), "#2B2440"); if (e.by === Net.myId) Audio2.pickup(); }
-      else if (e.t === "bomb") { Render.ring(e.x, e.y, e.color, T.bombRadius + 6); Render.burst(e.x, e.y, e.color, 24, 220); Render.kick(0.7); Audio2.bomb(); if (mine) { runStats.powerups++; vibrate(20); Render.popup(e.x, e.y - 26, Lang("bombAura"), "#2B2440"); } }
-      else if (e.t === "pickup") { if (mine) { runStats.powerups++; Audio2.pickup(); vibrate(15); const m = myPos(); if (m) Render.popup(m.x, m.y - 26, Lang.ability(e.kind), "#2B2440"); } }
-      else if (e.t === "freeze") { Render.ring(e.x, e.y, "#6FC3FF", 110); Render.burst(e.x, e.y, "#9ED8FF", 20, 200); Audio2.bomb(); }
+      else if (e.t === "flip") { Render.ring(e.x, e.y, e.pol > 0 ? "#FFCF5A" : "#6FC3FF", 26); if (mine) { runStats.flips++; if (role !== "client") Audio2.dash(); vibrate(6); } }
+      else if (e.t === "coin") { if (mine) { runStats.coins++; Audio2.pickup(); } Render.burst(e.x, e.y, "#FFCF5A", 5, 90); }
+      else if (e.t === "bump") { if (e.small) { Audio2.tick(); continue; } Render.kick(e.victim === Net.myId ? 1 : 0.4); Render.burst(e.x, e.y, "#fff", 12, 180); Audio2.bump(); if (e.by === Net.myId) runStats.kos++; if (e.lost) Render.popup(e.x, e.y - 22, `${nameOf(e.victim)} −${e.lost}`, "#FF5E7E"); if (e.victim === Net.myId) { Audio2.stunned(); vibrate([30, 30, 60]); } }
+      else if (e.t === "fall") { Render.ring(e.x, e.y, "#FF5E7E", 50); Audio2.bomb(); Render.kick(0.6); Render.popup(e.x, e.y - 30, e.lost ? `${nameOf(e.id)} −${e.lost}` : nameOf(e.id), "#FF5E7E"); if (mine) vibrate([40, 40, 80]); }
+      else if (e.t === "ko") { if (e.by === Net.myId) runStats.kos++; Render.popup(e.x, e.y - 44, Lang("ko", nameOf(e.by), nameOf(e.victim)), "#fff"); if (e.by === Net.myId) Audio2.pickup(); }
+      else if (e.t === "pickup") { if (mine) { runStats.powerups++; Audio2.pickup(); vibrate(15); } Render.ring(e.x, e.y, "#fff", 30); const m = mine && myPos(); if (m) Render.popup(m.x, m.y - 26, Lang.ability(e.kind), "#fff"); }
       else if (e.t === "shieldpop") { if (e.x) Render.burst(e.x, e.y, "#5EE1D0", 14, 160); Audio2.bump(); }
-      else if (e.t === "capture") { if (mine) runStats.captures++; Render.ring(e.x, e.y, e.color, 40); Render.burst(e.x, e.y, e.color, 16, 180); Render.popup(e.x, e.y - 22, Lang("capture", nameOf(e.id)), e.color); Audio2.pickup(); }
-      else if (e.t === "zone") { Audio2.tick(); }
       else if (e.t === "respawn") { if (mine) Audio2.go(); }
     }
   }
@@ -262,7 +253,7 @@
     show("hud");
     $("hud-hint").textContent = isTouch ? Lang("hintMobile") : Lang("hintPc");
     setTimeout(() => { $("hud-hint").textContent = ""; }, 5000);
-    $("btn-dash").classList.toggle("hidden", !isTouch);
+    $("btn-dash").classList.toggle("hidden", !isTouch); $("btn-dash").textContent = "FLIP";
     let ml = $("hud-mode"); if (!ml) { ml = document.createElement("div"); ml.id = "hud-mode"; ml.className = "hud-mode"; $("hud").appendChild(ml); }
     ml.textContent = Lang.mode(lobby.mode);
     $("hud-bars").innerHTML = "";
@@ -275,16 +266,15 @@
       const players = [];
       lobby.players.forEach((lp, slot) => {
         const color = cw.teams ? Sim.TEAM_COLORS[slot % 2] : Sim.COLORS[lp.ci];
-        if (lp.id === Net.myId) { const m = cw.players[0]; players.push({ x: m.x, y: m.y, dir: m.dir, color, name: lp.name, hat: lp.hat, pattern: lp.pattern, stun: m.stun > 0, dash: m.dash > 0, boost: m.speedBoost > 0, shield: m.shield, giant: m.giant > 0, gun: m.gun, dead: m.dead > 0, frozen: m.frozen > 0, bomb: m.bomb > 0, frenzy: m.frenzy > 0, me: true, meLabel: meLabel(), dashCd: m.dashCd / T.dashCooldown }); }
-        else { const r = remote.get(lp.id); if (!r) return; players.push({ x: r.dx, y: r.dy, dir: r.dir, color, name: lp.name, hat: lp.hat, pattern: lp.pattern, stun: r.stun, dash: r.dash, boost: r.boost, shield: r.shield, giant: r.giant, gun: r.gun, dead: r.dead, frozen: r.frozen, bomb: r.bomb, frenzy: r.frenzy }); }
+        if (lp.id === Net.myId) { const m = cw.players[0]; players.push({ x: m.x, y: m.y, dir: m.dir, color, name: lp.name, hat: lp.hat, pattern: lp.pattern, stun: m.stun > 0, shield: m.shield > 0, magnet: m.magnet > 0, heavy: m.heavy > 0, dead: m.dead > 0, pol: m.pol, score: m.score, me: true, meLabel: meLabel() }); }
+        else { const r = remote.get(lp.id); if (!r) return; players.push({ x: r.dx, y: r.dy, dir: r.dir, color, name: lp.name, hat: lp.hat, pattern: lp.pattern, stun: r.stun, shield: r.shield, magnet: r.magnet, heavy: r.heavy, dead: r.dead, pol: r.pol, score: r.score }); }
       });
       view.players = players; view.showMe = showMe;
       return view;
     }
     return {
-      obstacles: world.obstacles, powerups: world.powerups, time: world.time, phase: world.phase, countdown: world.countdown, showMe, objective: objPayload(),
-      projectiles: world.projectiles.map(pr => { const o = world.players.find(p => p.slot === pr.owner); return { x: pr.x, y: pr.y, color: o ? Sim.colorOf(world, o) : "#000" }; }),
-      players: world.players.map(p => ({ x: p.x, y: p.y, dir: p.dir, color: Sim.colorOf(world, p), name: p.name, hat: p.hat, pattern: p.pattern, stun: p.stun > 0, dash: p.dash > 0, boost: p.speedBoost > 0, shield: p.shield, giant: p.giant > 0, gun: p.gun, dead: p.dead > 0, frozen: p.frozen > 0 && p.stun > 0, bomb: p.bomb > 0, frenzy: p.frenzy > 0, me: p.id === Net.myId, meLabel: meLabel(), dashCd: p.dashCd / T.dashCooldown })),
+      pits: world.pits, powerups: world.powerups, coins: world.coins, time: world.time, phase: world.phase, countdown: world.countdown, showMe,
+      players: world.players.map(p => ({ x: p.x, y: p.y, dir: p.dir, color: Sim.colorOf(world, p), name: p.name, hat: p.hat, pattern: p.pattern, stun: p.stun > 0, shield: p.shield > 0, magnet: p.magnet > 0, heavy: p.heavy > 0, dead: p.dead > 0, pol: p.pol, score: Math.round(p.score), me: p.id === Net.myId, meLabel: meLabel() })),
     };
   }
   let lastFrame = performance.now(), barsAcc = 0;
@@ -294,24 +284,23 @@
       if (role === "client") for (const r of remote.values()) { const k = Math.min(1, dt * 14); r.dx += (r.tx - r.dx) * k; r.dy += (r.ty - r.dy) * k; }
       const v = buildView(); Render.draw(v, dt);
       if (phase === "game") { $("hud-time").textContent = Math.ceil(v.time); barsAcc += dt; if (barsAcc > 0.3) { barsAcc = 0; renderBars(); } }
-    } else Render.draw({ obstacles: [], powerups: [], players: [], phase: "idle" }, dt);
+    } else Render.draw({ pits: [], powerups: [], coins: [], players: [], phase: "idle" }, dt);
     requestAnimationFrame(frame);
   }
   function renderBars() {
-    const w = role === "client" ? cw : world, total = Sim.GW * Sim.GH, bars = $("hud-bars");
-    const paintMode = lobby.mode === "paint" || lobby.mode === "team";
+    const bars = $("hud-bars");
+    const scoreOf = (lp, i) => { if (role !== "client") { const p = world.players[i]; return p ? p.score : 0; } const r = lp.id === Net.myId ? cw.players[0] : remote.get(lp.id); return r ? r.score || 0 : 0; };
     let rows;
-    if (lobby.mode === "team") rows = [0, 1].map(t => ({ color: Sim.TEAM_COLORS[t], me: (role === "client" ? cw.players[0].team : world.players.find(p => p.id === Net.myId)?.team) === t, v: 100 * w.counts[t + 1] / total, label: "" }));
-    else if (role === "client") rows = lobby.players.map((lp, i) => { const r = lp.id === Net.myId ? cw.players[0] : remote.get(lp.id); return { color: Sim.COLORS[lp.ci], me: lp.id === Net.myId, v: paintMode ? 100 * w.counts[i + 1] / total : (r ? r.score || 0 : 0), label: lp.name }; });
-    else rows = world.players.map(p => ({ color: Sim.colorOf(world, p), me: p.id === Net.myId, v: paintMode ? 100 * w.counts[p.slot + 1] / total : p.score, label: p.name }));
-    const max = paintMode ? 40 : lobby.opts.target > 0 ? lobby.opts.target : Math.max(5, ...rows.map(r => r.v));
+    if (lobby.mode === "team") rows = [0, 1].map(t => ({ color: Sim.TEAM_COLORS[t], me: ((role === "client" ? cw.players[0].slot : world.players.find(p => p.id === Net.myId)?.slot) % 2) === t, v: lobby.players.reduce((a, lp, i) => a + (i % 2 === t ? scoreOf(lp, i) : 0), 0) }));
+    else rows = lobby.players.map((lp, i) => ({ color: Sim.COLORS[lp.ci], me: lp.id === Net.myId, v: scoreOf(lp, i) }));
+    const max = lobby.opts.target > 0 ? lobby.opts.target : Math.max(10, ...rows.map(r => r.v));
     if (bars.childElementCount !== rows.length) bars.innerHTML = rows.map(r => `<div class="hud-bar${r.me ? " me" : ""}"><i style="background:${r.color}"></i></div>`).join("");
     rows.forEach((r, i) => { const el = bars.children[i]; el.firstChild.style.width = Math.min(100, 100 * r.v / max) + "%"; el.firstChild.style.background = r.color; el.classList.toggle("me", r.me); });
   }
 
   // ---------- vstupy
   const keys = {};
-  window.addEventListener("keydown", (e) => { if (e.target.tagName === "INPUT") return; keys[e.key.toLowerCase()] = true; if (e.key === " ") { e.preventDefault(); if (phase === "game") input.dash = true; } updateKeyInput(); });
+  window.addEventListener("keydown", (e) => { if (e.target.tagName === "INPUT") return; keys[e.key.toLowerCase()] = true; if (e.key === " " && !e.repeat) { e.preventDefault(); if (phase === "game") input.flip = true; } updateKeyInput(); });
   window.addEventListener("keyup", (e) => { keys[e.key.toLowerCase()] = false; updateKeyInput(); });
   function updateKeyInput() { if (joyActive) return; let dx = 0, dy = 0; if (keys["a"] || keys["arrowleft"]) dx -= 1; if (keys["d"] || keys["arrowright"]) dx += 1; if (keys["w"] || keys["arrowup"]) dy -= 1; if (keys["s"] || keys["arrowdown"]) dy += 1; const l = Math.hypot(dx, dy) || 1; input.dx = dx / l; input.dy = dy / l; }
   let joyActive = false, joyId = null, joyOrigin = null;
@@ -321,22 +310,22 @@
   const endJoy = (e) => { if (!joyActive || e.pointerId !== joyId) return; joyActive = false; input.dx = input.dy = 0; $("joy").classList.add("hidden"); updateKeyInput(); };
   stage.addEventListener("pointerup", endJoy); stage.addEventListener("pointercancel", endJoy);
   function setKnob(dx, dy) { $("joy").querySelector(".joy-knob").style.transform = `translate(${dx}px, ${dy}px)`; }
-  $("btn-dash").addEventListener("pointerdown", (e) => { e.preventDefault(); if (phase === "game") input.dash = true; });
+  $("btn-dash").addEventListener("pointerdown", (e) => { e.preventDefault(); if (phase === "game") input.flip = true; });
 
   // ---------- výsledky
   function endRound(results) {
     phase = "results"; hostLoopStop();
     myResult = results.find(r => r.id === Net.myId);
-    const paintMode = lobby.mode === "paint" || lobby.mode === "team";
+    const paintMode = false;
     if (myResult) {
       Storage.addCoins(myResult.coins);
-      const st = Storage.stats; Storage.setStats({ games: st.games + 1, wins: st.wins + (myResult.win ? 1 : 0), best: Math.max(st.best, myResult.pct) });
+      const st = Storage.stats; Storage.setStats({ games: st.games + 1, wins: st.wins + (myResult.win ? 1 : 0), best: Math.max(st.best, myResult.own) });
       Missions.afterGame(myResult, runStats);
       setTimeout(() => myResult.win ? Audio2.win() : Audio2.lose(), 400);
     }
     const top = results[0];
     $("res-title").textContent = lobby.mode === "team" ? Lang("teamWin", Lang(top.team === 0 ? "teamA" : "teamB")) : myResult && myResult.win ? Lang("youWin") : results.length > 1 && results[0].value === results[1].value && results[0].pct === results[1].pct ? Lang("draw") : Lang("winner", top.name);
-    $("res-list").innerHTML = results.map(r => `<div class="res-row${r.id === Net.myId ? " me" : ""}"><span>${r.rank}.</span><span class="dot" style="background:${r.color}"></span><span><span class="nm"></span><div class="bar"><i style="width:${Math.min(100, paintMode ? r.pct * 2.5 : 100 * r.value / Math.max(1, top.value))}%;background:${r.color}"></i></div></span><span class="pct">${paintMode ? r.pct.toFixed(1) + " %" : Math.round(r.value)}</span></div>`).join("");
+    $("res-list").innerHTML = results.map(r => `<div class="res-row${r.id === Net.myId ? " me" : ""}"><span>${r.rank}.</span><span class="dot" style="background:${r.color}"></span><span><span class="nm"></span><div class="bar"><i style="width:${Math.min(100, 100 * r.own / Math.max(1, ...results.map(x => x.own)))}%;background:${r.color}"></i></div></span><span class="pct">${Math.round(r.own)}${lobby.mode === "team" ? " / " + Math.round(r.value) : ""}</span></div>`).join("");
     [...$("res-list").querySelectorAll(".nm")].forEach((el, i) => el.textContent = results[i].name);
     $("res-coins").textContent = myResult ? Lang("coinsEarned", myResult.coins) : "";
     $("btn-double").classList.toggle("hidden", !myResult || myResult.coins <= 0); $("btn-double").disabled = false;
