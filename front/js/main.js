@@ -4,7 +4,9 @@
   const screens = ["menu", "hud", "lobby", "results", "shop", "missions"];
   const MODES = Object.keys(Sim.MODES);
   let role = null, world = null, cw = null, view = null, phase = "menu";
-  const defOpts = () => Object.assign({ pu: "off", bots: "mix", target: 0 }, Storage.opts);
+  const defOpts = () => Object.assign({ pu: "random", bots: "mix", target: 0, disabled: [] }, Storage.opts);
+  const U = FR_CONFIG.units;
+  let tool = null;   // {type} – čeká na kliknutí cíle (nuke / warship)
   let lobby = { code: "", hostId: null, players: [], mode: MODES[0], seconds: 0, opts: defOpts() };
   let myResult = null, doubled = false, roundStart = 0, hostTimer = null, clientTimer = null, snapAcc = 0, fullAcc = 0, snapDirty = [], snapTDirty = [], snapEvents = [];
   let hover = -1, brushVal = 1, painting = null, ratio = 0.5, remoteP = [], remoteA = [], runStats = null, centroidAcc = 0, centroids = {};
@@ -43,8 +45,8 @@
   Net.on("act", (p, from) => { if (role !== "host" || !world) return; const pl = world.players.find(x => x.id === from); if (!pl) return; applyAct(pl, p); });
   function applyAct(pl, p) {
     if (p.k === "spawn" && world.phase === "spawn") { pl.spawnAt = p.cell; Sim.doSpawn(world, pl, p.cell); }
-    else if (p.k === "attack" && world.phase === "play") pl.input = { cell: p.cell, ratio: p.ratio };
     else if (p.k === "paint" && world.phase === "draw") Sim.paint(world, p.cells, p.val);
+    else if (world.phase === "play") pl.input.push(p);
   }
   $("btn-bots").onclick = () => { fillBots(); syncLobby(); };
   $("btn-start").onclick = () => startRound();
@@ -62,7 +64,8 @@
     $("mode-desc").textContent = Lang.modeDesc(lobby.mode);
     $("len-btns").parentElement.classList.add("hidden"); $("target-row").classList.add("hidden");
     const setOpt = (k, v) => { lobby.opts[k] = v; Storage.setOpts(lobby.opts); if (k === "bots" && world) world.players.forEach(p => { if (p.bot) Sim.assignBot(p, v); }); syncLobby(); };
-    seg("pu-btns", ["off", "on"], lobby.opts.pu, (v) => Lang.pu(v), (v) => setOpt("pu", v));
+    seg("pu-btns", Sim.MAPS, Sim.MAPS.includes(lobby.opts.pu) ? lobby.opts.pu : "random", (v) => Lang.map(v), (v) => setOpt("pu", v));
+    const ub = $("units-btns"); ub.innerHTML = ""; for (const u of Sim.UNIT_KEYS) { const b = document.createElement("button"); b.textContent = Lang.unit(u); b.className = (lobby.opts.disabled || []).includes(u) ? "active" : ""; b.disabled = !canEdit; b.onclick = () => { const d = new Set(lobby.opts.disabled || []); d.has(u) ? d.delete(u) : d.add(u); setOpt("disabled", [...d]); }; ub.appendChild(b); }
     seg("bots-btns", Object.keys(Sim.BOT_SKILL), lobby.opts.bots, (v) => Lang.botLv(v), (v) => setOpt("bots", v));
   }
   $("btn-copy").onclick = async () => { try { await navigator.clipboard.writeText(Net.roomLink(lobby.code)); toast(Lang("copied")); } catch { toast(Net.roomLink(lobby.code), 4000); } };
@@ -73,7 +76,7 @@
   // ---------- kolo
   function startRound() {
     doubled = false; myResult = null; runStats = { attacks: 0, cells: 0 };
-    Sim.resetRound(world, Date.now(), { mode: lobby.mode, draw: lobby.opts.pu === "on", bots: lobby.opts.bots });
+    Sim.resetRound(world, Date.now(), { mode: lobby.mode, map: lobby.opts.pu, disabled: lobby.opts.disabled, bots: lobby.opts.bots });
     lobby.players = Sim.lobbyInfo(world);
     Render.setPalette(Sim.palette(world)); Render.fullPaint(world.terrain, world.owner);
     if (role === "host") Net.send("start", { seed: world.seed, mode: lobby.mode, opts: lobby.opts, players: lobby.players });
@@ -92,7 +95,8 @@
   }
   function hostLoopStop() { if (hostTimer) hostTimer.stop(); hostTimer = null; }
   const attacksPayload = () => world.attacks.map(a => { const p = world.players.find(q => q.slot + 1 === a.from); return { from: a.from, to: a.to, cell: a.cell, troops: Math.round(a.troops), color: p ? Sim.colorOf(world, p) : "#fff" }; });
-  function snapPayload(d, td, ev) { return { p: Sim.packPlayers(world), d, td, a: attacksPayload(), ph: world.phase, cd: world.countdown, t: Math.round(world.time), ev }; }
+  const colorSlot = (sl) => { const p = world.players.find(q => q.slot + 1 === sl); return p ? Sim.colorOf(world, p) : "#fff"; };
+  function snapPayload(d, td, ev) { return { p: Sim.packPlayers(world), d, td, a: attacksPayload(), b: world.buildings.map(b => ({ id: b.id, type: b.type, cell: b.cell, owner: b.owner, color: colorSlot(b.owner) })), bo: world.boats.map(b => ({ x: Math.round(b.x * 10) / 10, y: Math.round(b.y * 10) / 10, tx: b.tx, ty: b.ty, troops: b.troops, color: colorSlot(b.from) })), nk: world.nukes.map(n => ({ fromCell: n.fromCell, cell: n.cell, t: Math.round(n.t * 10) / 10, radius: n.radius })), ph: world.phase, cd: world.countdown, t: Math.round(world.time), ev }; }
   function sendFull(to) { Net.send("full", Object.assign(snapPayload([], [], []), { full: 1, terr: Sim.packGrid(world.terrain), own: Sim.packGrid(world.owner), seed: world.seed, mode: world.mode, opts: lobby.opts, players: lobby.players }), to); }
 
   // ---------- klient
@@ -107,14 +111,14 @@
   Net.on("end", (p) => { if (role === "client") endRound(p.results); });
   function clientStart(p) {
     doubled = false; myResult = null; runStats = { attacks: 0, cells: 0 }; lobby.players = p.players; lobby.mode = p.mode; if (p.opts) lobby.opts = p.opts;
-    cw = Sim.create(p.seed, { mode: p.mode, draw: lobby.opts.pu === "on", client: true });
+    cw = Sim.create(p.seed, { mode: p.mode, map: lobby.opts.pu, disabled: lobby.opts.disabled, client: true });
     lobby.players.forEach(lp => Sim.addPlayer(cw, { id: lp.id, name: lp.name, pref: lp.ci })); cw.players.forEach((q, i) => { q.ci = lobby.players[i].ci; });
     Render.setPalette(lobby.players.map(lp => Sim.COLORS[lp.ci])); Render.fullPaint(cw.terrain, cw.owner);
     view = { players: [], attacks: [], phase: "countdown", countdown: 3, time: 0 };
     phase = "game"; roundStart = performance.now(); beginGameUI();
     if (clientTimer) clientTimer.stop(); clientTimer = Net.workerInterval(() => { if (painting !== null) sendPaintBatch(); }, 200);
   }
-  function applySnap(p) { Object.assign(view, { phase: p.ph, countdown: p.cd, time: p.t }); cw.phase = p.ph; remoteP = p.p; remoteA = p.a || []; if (p.ev && p.ev.length) handleEvents(p.ev); }
+  function applySnap(p) { Object.assign(view, { phase: p.ph, countdown: p.cd, time: p.t, buildings: p.b || [], boats: p.bo || [], nukes: p.nk || [] }); cw.phase = p.ph; remoteP = p.p; remoteA = p.a || []; if (p.ev && p.ev.length) handleEvents(p.ev); }
 
   // ---------- akce hráče
   function act(a) { if (role === "client") Net.send("act", a, lobby.hostId); else { const pl = world.players.find(x => x.id === Net.myId); if (pl) applyAct(pl, a); } }
@@ -124,10 +128,35 @@
   canvas.addEventListener("pointermove", (e) => { hover = Render.toCell(e.clientX, e.clientY); if (painting !== null) brushAt(hover, painting); });
   canvas.addEventListener("pointerdown", (e) => {
     if (phase !== "game") return; const w = W_(); const cell = Render.toCell(e.clientX, e.clientY); if (cell < 0) return;
+    hideBuildMenu();
     if (w.phase === "draw") { painting = e.button === 2 ? 0 : brushVal; brushAt(cell, painting); }
-    else if (w.phase === "spawn") { act({ k: "spawn", cell }); }
-    else if (w.phase === "play") { act({ k: "attack", cell, ratio }); runStats.attacks++; Audio2.ui(); }
+    else if (w.phase === "spawn") { if (e.button === 0) act({ k: "spawn", cell }); }
+    else if (w.phase === "play") {
+      const mySlot = mySlotIdx();
+      if (tool) { if (e.button === 0) { if (tool.nuke) act({ k: "nuke", type: tool.type, cell }); else act({ k: "build", type: tool.type, cell }); } setTool(null); return; }
+      if (e.button === 2) { if (w.owner[cell] === mySlot + 1) showBuildMenu(e.clientX, e.clientY, cell); return; }
+      if (!w.terrain[cell] || w.owner[cell] === mySlot + 1) return;
+      // sousedí s mým územím? -> útok, jinak loď
+      let adj = false; for (let y = -1; y <= 1 && !adj; y++) for (let x = -1; x <= 1; x++) { const xx = Sim.cx(cell) + x, yy = Sim.cy(cell) + y; if (xx < 0 || yy < 0 || xx >= Sim.GW || yy >= Sim.GH) continue; if (w.owner[Sim.idx(xx, yy)] === mySlot + 1) { adj = true; break; } }
+      if (adj || landAdjacent(w, cell, mySlot + 1)) { act({ k: "attack", cell, ratio }); runStats.attacks++; Audio2.ui(); }
+      else { act({ k: "boat", cell, ratio }); runStats.attacks++; }
+    }
   });
+  function mySlotIdx() { return lobby.players.findIndex(p => p.id === Net.myId); }
+  // hrubá kontrola souvislosti po souši: cíl (jeho vlastník) má nějaké pole u mé hranice
+  function landAdjacent(w, cell, me) { const target = w.owner[cell]; for (let i = 0; i < Sim.N; i += 1) { if (w.owner[i] !== me) continue; const x = Sim.cx(i), y = Sim.cy(i); if ((x > 0 && w.owner[i - 1] === target && w.terrain[i - 1]) || (x < Sim.GW - 1 && w.owner[i + 1] === target && w.terrain[i + 1]) || (y > 0 && w.owner[i - Sim.GW] === target && w.terrain[i - Sim.GW]) || (y < Sim.GH - 1 && w.owner[i + Sim.GW] === target && w.terrain[i + Sim.GW])) return true; } return false; }
+  function showBuildMenu(px, py, cell) {
+    const m = $("build-menu"); const w = W_(); const mp = myInfo(); const gold = mp ? mp.gold : 0; const dis = new Set(lobby.opts.disabled || []);
+    const btn = (type, extra) => `<button data-type="${type}" ${dis.has(type) ? "disabled" : ""}><span>${Lang.unit(type)}${extra || ""}</span><b>${U[type].cost}</b></button>`;
+    m.innerHTML = `<div class="hd">${Lang("build")}</div>${["city", "defense", "port", "factory", "silo", "sam"].map(t => btn(t)).join("")}<div class="hd">${Lang("navy")}</div>${btn("warship")}<div class="hd">${Lang("nukesHd")}</div>${["atom", "hydrogen", "mirv"].map(t => btn(t)).join("")}`;
+    m.querySelectorAll("button").forEach(b => { const type = b.dataset.type; if (!b.disabled && gold < U[type].cost) b.style.opacity = .5; b.onclick = () => { hideBuildMenu(); if (["atom", "hydrogen", "mirv"].includes(type)) setTool({ type, nuke: true }); else if (type === "warship") setTool({ type }); else act({ k: "build", type, cell }); }; });
+    const st = $("stage").getBoundingClientRect(); m.style.left = Math.min(px - st.left, st.width - 280) + "px"; m.style.top = Math.min(py - st.top, st.height - 260) + "px"; m.classList.remove("hidden");
+  }
+  function hideBuildMenu() { $("build-menu").classList.add("hidden"); }
+  function setTool(t) { tool = t; $("hud-tool").classList.toggle("hidden", !t); if (t) $("tool-label").textContent = Lang("pickTarget", Lang.unit(t.type)); }
+  $("tool-cancel").onclick = () => setTool(null);
+  window.addEventListener("keydown", (e) => { if (e.key === "Escape") { setTool(null); hideBuildMenu(); } });
+  function myInfo() { if (role !== "client") { const p = world && world.players.find(x => x.id === Net.myId); return p ? { gold: p.gold, troops: p.troops } : null; } const r = remoteP.find(x => x[0] === Net.myId); return r ? { gold: r[5], troops: r[1] } : null; }
   window.addEventListener("pointerup", () => { if (painting !== null) { sendPaintBatch(); painting = null; } });
   let paintBatch = [];
   function brushAt(cell, val) { if (cell < 0) return; const r = 2, cx = cell % Sim.GW, cy = (cell / Sim.GW) | 0, list = []; for (let y = -r; y <= r; y++) for (let x = -r; x <= r; x++) { const xx = cx + x, yy = cy + y; if (xx < 0 || yy < 0 || xx >= Sim.GW || yy >= Sim.GH || x * x + y * y > r * r + 1) continue; list.push(Sim.idx(xx, yy)); } if (role === "client") { for (const i of list) cw.terrain[i] = val; Render.applyTerrain(list.map(i => (i << 1) | val)); paintBatch.push(...list); } else act({ k: "paint", cells: list, val }); }
@@ -148,13 +177,25 @@
       else if (e.t === "spawn") { if (mine) Audio2.pickup(); }
       else if (e.t === "attack") { if (mine) Audio2.dash(); }
       else if (e.t === "noAdj") { if (mine) toast(Lang("noAdj")); }
+      else if (e.t === "needPort") { if (mine) toast(Lang("needPort"), 2500); }
+      else if (e.t === "needSilo") { if (mine) toast(Lang("needSilo"), 2500); }
+      else if (e.t === "needCoast") { if (mine) toast(Lang("needCoast"), 2500); }
+      else if (e.t === "noGold") { if (mine) toast(Lang("noGold")); }
+      else if (e.t === "built") { if (mine) { Audio2.pickup(); } }
+      else if (e.t === "boat") { if (mine) { toast(Lang("boatSent")); Audio2.dash(); } }
+      else if (e.t === "landing") { Audio2.bump(); }
+      else if (e.t === "sunk") { Audio2.bomb(); }
+      else if (e.t === "nukeLaunch") { Audio2.whistle(); }
+      else if (e.t === "boom") { const sx = Render.W / Sim.GW, sy = Render.H / Sim.GH; Render.ring((Sim.cx(e.cell) + 0.5) * sx, (Sim.cy(e.cell) + 0.5) * sy, "#FF9A3C", e.radius * sx); Render.burst((Sim.cx(e.cell) + 0.5) * sx, (Sim.cy(e.cell) + 0.5) * sy, "#FFCF5A", 30); Audio2.bomb(); }
+      else if (e.t === "intercept") { const sx = Render.W / Sim.GW, sy = Render.H / Sim.GH; Render.popup((Sim.cx(e.cell) + 0.5) * sx, (Sim.cy(e.cell) + 0.5) * sy, "SAM ✓", "#5EE1D0"); Audio2.tick(); }
+      else if (e.t === "shell") { Audio2.tick(); }
       else if (e.t === "out") { toast(Lang("eliminated", nameOf(e.id)), 2000); Audio2.bomb(); }
       else if (e.t === "end") Audio2.whistle();
     }
   }
 
   // ---------- HUD + kreslení
-  function beginGameUI() { show("hud"); $("hud-hint").textContent = Lang("hintPc"); setTimeout(() => { $("hud-hint").textContent = ""; }, 8000); $("btn-spec-leave").classList.add("hidden"); $("hud-board").innerHTML = ""; }
+  function beginGameUI() { show("hud"); setTool(null); hideBuildMenu(); $("hud-hint").textContent = Lang("hintPc"); setTimeout(() => { $("hud-hint").textContent = ""; }, 12000); $("btn-spec-leave").classList.add("hidden"); $("hud-board").innerHTML = ""; }
   function buildView() {
     const elapsed = (performance.now() - roundStart) / 1000;
     let players, attacks, ph, cd, time;
@@ -166,7 +207,8 @@
       attacks = attacksPayload(); ph = world.phase; cd = world.countdown; time = world.time;
     }
     for (const p of players) { const c = centroids[p.slot]; if (c) { p.cx = c.x; p.cy = c.y; } p.meLabel = Lang("you").toUpperCase(); }
-    return { players, attacks, phase: ph, countdown: cd, time, hover, brush: 2, brushVal: painting ?? brushVal, showMe: ph === "play" && elapsed < 25 ? 1 : 0 };
+    const extra = role === "client" ? { buildings: view.buildings || [], boats: view.boats || [], nukes: view.nukes || [] } : { buildings: world.buildings.map(b => ({ id: b.id, type: b.type, cell: b.cell, owner: b.owner, color: colorSlot(b.owner) })), boats: world.boats.map(b => ({ x: b.x, y: b.y, tx: b.tx, ty: b.ty, troops: b.troops, color: colorSlot(b.from) })), nukes: world.nukes.map(n => ({ fromCell: n.fromCell, cell: n.cell, t: n.t, radius: n.radius })) };
+    return Object.assign({ players, attacks, phase: ph, countdown: cd, time, hover, brush: 2, brushVal: painting ?? brushVal, showMe: ph === "play" && elapsed < 25 ? 1 : 0, tool: !!tool, toolRadius: tool && tool.nuke ? (U[tool.type].radius + (tool.type === "mirv" ? U.mirv.spread : 0)) : 0 }, extra);
   }
   function updateCentroids() { const w = W_(); const sx = new Float64Array(9), sy = new Float64Array(9), n = new Int32Array(9); for (let i = 0; i < Sim.N; i++) { const o = w.owner[i]; if (!o) continue; sx[o] += i % Sim.GW; sy[o] += (i / Sim.GW) | 0; n[o]++; } centroids = {}; for (let o = 1; o <= 8; o++) if (n[o]) centroids[o - 1] = { x: sx[o] / n[o] + 0.5, y: sy[o] / n[o] + 0.5 }; }
   let lastFrame = performance.now(), hudAcc = 0;
@@ -184,6 +226,7 @@
     $("hud-phase").textContent = v.phase === "draw" ? Lang.phaseText("draw") : v.phase === "spawn" ? Lang.phaseText("spawn") : "";
     const mp = v.players.find(p => p.me);
     $("hud-troops").textContent = mp && v.phase === "play" ? `${Math.round(mp.troops)} ${Lang("troops")}` : "";
+    const mi = myInfo(); $("hud-gold").textContent = mi ? `● ${Math.round(mi.gold)} ${Lang("gold")}` : "";
     $("hud-ratio").classList.toggle("hidden", v.phase !== "play"); $("hud-brush").classList.toggle("hidden", v.phase !== "draw");
     const land = W_().terrain.reduce((a, b) => a + b, 0) || 1;
     const sorted = [...v.players].sort((a, b) => b.cells - a.cells);

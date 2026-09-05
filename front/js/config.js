@@ -10,15 +10,26 @@ window.FR_CONFIG = {
   stripe: { links: { remove_ads: "", coins_500: "", coins_2000: "" } },
   tuning: {
     maxPlayers: 8,
-    drawSeconds: 10,      // fáze kreslení mapy (když je zapnutá)
-    spawnSeconds: 8,      // výběr místa spawnu
-    growBase: 3,        // vojáci/s základ
-    growPerCell: 0.09,   // vojáci/s za každé pole území
-    maxBase: 150, maxPerCell: 8,
-    costNeutral: 1.2,     // cena za dobytí neutrálního pole
-    costEnemyBase: 2.5,   // cena za nepřátelské pole + podíl obránců
-    attackSpeed: 22,      // polí za sekundu na jeden útok (škáluje s velikostí útoku)
-    winShare: 0.6,        // podíl mapy = výhra
+    drawSeconds: 12, spawnSeconds: 8,
+    growBase: 3, growPerCell: 0.05, maxBase: 150, maxPerCell: 5,   // vojáci
+    goldBase: 1, goldPerCell: 0.02, startGold: 100,                 // zlato
+    costNeutral: 1.2, costEnemyBase: 2.5, attackSpeed: 26,
+    boatSpeed: 30,        // polí/s
+    nukeFlight: 3,        // s
+    winShare: 0.6,
     tickRate: 20, snapRate: 5,
+  },
+  // jednotky a stavby: cena ve zlatě, popis efektu je v README
+  units: {
+    city:     { cost: 125, troopCap: 250, grow: 1.5 },
+    defense:  { cost: 60,  radius: 7, mult: 2.5 },
+    port:     { cost: 125 },
+    silo:     { cost: 200 },
+    sam:      { cost: 150, radius: 12, chance: 0.75 },
+    factory:  { cost: 100, gold: 1.2 },
+    warship:  { cost: 150, radius: 5 },
+    atom:     { cost: 300,  radius: 7 },
+    hydrogen: { cost: 900,  radius: 12 },
+    mirv:     { cost: 2200, radius: 6, count: 5, spread: 18 },
   },
 };

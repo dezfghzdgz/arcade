@@ -19,7 +19,7 @@ window.I18N = {
     stats: (g, w, b) => `Her ${g} · výher ${w} · nejvíc ${b} % mapy`, shareRoom: (c) => `Pojď hrát Front! Kód: ${c} `,
     hatNames: { none: "Nic", cap: "Kšiltovka", crown: "Koruna", horns: "Rohy", halo: "Svatozář", antenna: "Anténa", headphones: "Sluchátka", tophat: "Cylindr", bow: "Mašle", sprout: "Klíček", helmet: "Helma", party: "Party", beanie: "Kulich", flower: "Kytka", cat: "Kočka", chef: "Kuchař", pirate: "Pirát", viking: "Viking", wizard: "Kouzelník" },
     patNames: { none: "Nic", stripes: "Pruhy", dots: "Puntíky", ring: "Prstenec", half: "Půlka", star: "Hvězda", heart: "Srdce", checker: "Šachovnice" },
-    modes: { classic: "Klasika", timed: "3 minuty" }, drawMap: "Mapa", draw: { off: "náhodná", on: "kreslíme spolu (10 s)" }, phase: { draw: "KRESLETE MAPU – levé tlačítko země, pravé voda", spawn: "KLIKNI, KDE CHCEŠ ZAČÍT", play: "" }, attackWith: "Útočit s", land: "Země", water: "Voda", troops: "vojáků", noAdj: "Musí sousedit s tvým územím", spawned: (n) => `${n} se objevil`, eliminated: (n) => `${n} vyřazen`, hintPc: "Klik na sousední pole = útok (podíl vojáků posuvníkem). Vojáci rostou s územím.", watching: "Sleduješ", hostCantLeave: "Hostitel nemůže odejít",
+    modes: { classic: "Klasika", timed: "3 minuty" }, drawMap: "Mapa", disable: "Vypnout", maps: { random: "náhodná", islands: "ostrovy", continents: "kontinenty", pangaea: "pangea", lake: "jezero", archipelago: "souostroví", draw: "kreslíme spolu" }, units: { city: "Město", defense: "Obrana", port: "Přístav", silo: "Silo", sam: "SAM", factory: "Továrna", warship: "Válečná loď", atom: "Atomovka", hydrogen: "Vodíková", mirv: "MIRV" }, build: "Postavit", nukesHd: "Jaderné (potřebují silo)", navy: "Námořnictvo (potřebuje přístav)", pickTarget: (u) => `${u}: klikni na cíl`, needPort: "Potřebuješ přístav (pravý klik na pobřeží)", needSilo: "Potřebuješ silo", needCoast: "Přístav musí být na pobřeží", noGold: "Málo zlata", gold: "zlata", boatSent: "Loď vyplula", hintBuild: "Pravý klik na svoje území = stavby a zbraně", phase: { draw: "KRESLETE MAPU – levé tlačítko země, pravé voda", spawn: "KLIKNI, KDE CHCEŠ ZAČÍT", play: "" }, attackWith: "Útočit s", land: "Země", water: "Voda", troops: "vojáků", noAdj: "Musí sousedit s tvým územím", spawned: (n) => `${n} se objevil`, eliminated: (n) => `${n} vyřazen`, hintPc: "Levý klik na sousední pole = útok, přes vodu = loď (potřebuje přístav). Pravý klik na svoje území = stavby a zbraně.", watching: "Sleduješ", hostCantLeave: "Hostitel nemůže odejít",
     modeDesc: { classic: "Do posledního nebo 60 % mapy", timed: "Po 3 minutách vyhrává největší území" },
     mode: "Mód", length: "Délka", seconds: (n) => `${n} s`, color: "Barva", colorAuto: "náhodná",
     missions: "Úkoly", dailyT: "Denní", weeklyT: "Týdenní", missionDone: (n) => `Úkol splněn: +${n} mincí`, dailyBonus: (n, d) => `Denní bonus +${n} mincí (${d}. den v řadě)`,
@@ -28,7 +28,7 @@ window.I18N = {
     ko: (a, b) => `${a} KO ${b}`, capture: (n) => `${n} +1`, teamA: "Tým Korál", teamB: "Tým Akva", teamWin: (t) => `${t} vyhrává!`,
     hats: "Klobouky", patterns: "Vzory", vibrate: "Vibrace", hostSettings: "Nastavení kola",
     target: "Cíl", timeOnly: "jen čas", pts: (n) => `${n} b.`, abilities: "Schopnosti", bots: "Boti",
-    pu: { off: "náhodná", on: "kreslíme spolu (10 s)" }, botLv: { easy: "lehcí", mid: "střední", hard: "těžcí", mix: "mix" },
+    pu: { off: "náhodná", on: "kreslíme spolu (10 s)" }, phaseDraw: "KRESLETE MAPU – levé tlačítko země, pravé voda", botLv: { easy: "lehcí", mid: "střední", hard: "těžcí", mix: "mix" },
     tier: { easy: "noob", mid: "ok", hard: "pro" }, bombAura: "Bomba! 5 s aura",
   },
   en: {
@@ -51,7 +51,7 @@ window.I18N = {
     stats: (g, w, b) => `Games ${g} · wins ${w} · best ${b}% of map`, shareRoom: (c) => `Come play Front! Code: ${c} `,
     hatNames: { none: "None", cap: "Cap", crown: "Crown", horns: "Horns", halo: "Halo", antenna: "Antenna", headphones: "Headphones", tophat: "Top hat", bow: "Bow", sprout: "Sprout", helmet: "Helmet", party: "Party", beanie: "Beanie", flower: "Flower", cat: "Cat", chef: "Chef", pirate: "Pirate", viking: "Viking", wizard: "Wizard" },
     patNames: { none: "None", stripes: "Stripes", dots: "Dots", ring: "Ring", half: "Half", star: "Star", heart: "Heart", checker: "Checker" },
-    modes: { classic: "Classic", timed: "3 minutes" }, drawMap: "Map", draw: { off: "random", on: "draw together (10 s)" }, phase: { draw: "DRAW THE MAP – left button land, right button water", spawn: "CLICK WHERE TO START", play: "" }, attackWith: "Attack with", land: "Land", water: "Water", troops: "troops", noAdj: "Must border your territory", spawned: (n) => `${n} spawned`, eliminated: (n) => `${n} eliminated`, hintPc: "Click a neighboring cell to attack (troop share on the slider). Troops grow with territory.", watching: "Watching", hostCantLeave: "Host can't leave",
+    modes: { classic: "Classic", timed: "3 minutes" }, drawMap: "Map", disable: "Disable", maps: { random: "random", islands: "islands", continents: "continents", pangaea: "pangaea", lake: "lake", archipelago: "archipelago", draw: "draw together" }, units: { city: "City", defense: "Defense post", port: "Port", silo: "Missile silo", sam: "SAM launcher", factory: "Factory", warship: "Warship", atom: "Atom bomb", hydrogen: "Hydrogen bomb", mirv: "MIRV" }, build: "Build", nukesHd: "Nuclear (needs a silo)", navy: "Navy (needs a port)", pickTarget: (u) => `${u}: click the target`, needPort: "You need a port (right-click a coastal cell)", needSilo: "You need a missile silo", needCoast: "A port must be on the coast", noGold: "Not enough gold", gold: "gold", boatSent: "Boat sent", hintBuild: "Right-click your territory for buildings and weapons", phase: { draw: "DRAW THE MAP – left button land, right button water", spawn: "CLICK WHERE TO START", play: "" }, attackWith: "Attack with", land: "Land", water: "Water", troops: "troops", noAdj: "Must border your territory", spawned: (n) => `${n} spawned`, eliminated: (n) => `${n} eliminated`, hintPc: "Left-click a neighboring cell to attack, across water = boat (needs a port). Right-click your territory for buildings and weapons.", watching: "Watching", hostCantLeave: "Host can't leave",
     modeDesc: { classic: "Last one standing or 60 % of the map", timed: "Biggest territory after 3 minutes wins" },
     mode: "Mode", length: "Length", seconds: (n) => `${n} s`, color: "Color", colorAuto: "random",
     missions: "Missions", dailyT: "Daily", weeklyT: "Weekly", missionDone: (n) => `Mission complete: +${n} coins`, dailyBonus: (n, d) => `Daily bonus +${n} coins (day ${d} in a row)`,
@@ -60,7 +60,7 @@ window.I18N = {
     ko: (a, b) => `${a} KO'd ${b}`, capture: (n) => `${n} +1`, teamA: "Team Coral", teamB: "Team Aqua", teamWin: (t) => `${t} wins!`,
     hats: "Hats", patterns: "Patterns", vibrate: "Vibration", hostSettings: "Round settings",
     target: "Target", timeOnly: "time only", pts: (n) => `${n} pts`, abilities: "Abilities", bots: "Bots",
-    pu: { off: "random", on: "draw together (10 s)" }, botLv: { easy: "easy", mid: "medium", hard: "hard", mix: "mix" },
+    pu: { off: "random", on: "draw together (10 s)" }, phaseDraw: "DRAW THE MAP – left button land, right button water", botLv: { easy: "easy", mid: "medium", hard: "hard", mix: "mix" },
     tier: { easy: "noob", mid: "ok", hard: "pro" }, bombAura: "Bomb! 5 s aura",
   },
 };
@@ -77,6 +77,8 @@ window.Lang = (() => {
   L.botLv = (k) => (I18N[lang].botLv || I18N.en.botLv)[k] || k;
   L.tier = (k) => (I18N[lang].tier || I18N.en.tier)[k] || k;
   L.phaseText = (k) => (I18N[lang].phase || I18N.en.phase)[k] || "";
+  L.map = (k) => (I18N[lang].maps || I18N.en.maps)[k] || k;
+  L.unit = (k) => (I18N[lang].units || I18N.en.units)[k] || k;
   L.current = () => lang;
   L.set = (l) => { lang = l; Storage.setLang(l); L.apply(); };
   L.toggle = () => L.set(lang === "cs" ? "en" : "cs");

@@ -25,7 +25,9 @@
         <div id="hud-troops" class="hud-troops"></div>
       </div>
       <div id="hud-board" class="hud-board"></div>
-      <div id="hud-ratio" class="hud-ratio hidden"><span data-i18n="attackWith">Attack with</span> <b id="ratio-val">50 %</b><input id="ratio" type="range" min="10" max="100" step="5" value="50" /></div>
+      <div id="hud-ratio" class="hud-ratio hidden"><span data-i18n="attackWith">Attack with</span> <b id="ratio-val">50 %</b><input id="ratio" type="range" min="10" max="100" step="5" value="50" /><span id="hud-gold" class="gold"></span></div>
+      <div id="hud-tool" class="hud-tool hidden"><span id="tool-label"></span> <button id="tool-cancel">✕</button></div>
+      <div id="build-menu" class="build-menu hidden"></div>
       <div id="hud-brush" class="hud-ratio hidden"><button id="brush-land" class="active">▮ <span data-i18n="land">Land</span></button><button id="brush-water">▮ <span data-i18n="water">Water</span></button><span id="brush-hint" class="dim"></span></div>
       <div id="hud-hint" class="hud-hint"></div>
       <button id="btn-spec-leave" class="spec-leave hidden" data-i18n="leave">Leave</button>
@@ -80,6 +82,7 @@
         <div class="set-row"><span data-i18n="length">Length</span><div id="len-btns" class="seg"></div></div>
         <div class="set-row" id="target-row"><span data-i18n="target">Target</span><div id="target-btns" class="seg"></div></div>
         <div class="set-row"><span data-i18n="drawMap">Map</span><div id="pu-btns" class="seg"></div></div>
+        <div class="set-row"><span data-i18n="disable">Disable</span><div id="units-btns" class="seg"></div></div>
         <div class="set-row"><span data-i18n="bots">Bots</span><div id="bots-btns" class="seg"></div></div>
       </div>
       <div id="lobby-count" class="lb-status"></div>
