@@ -26,5 +26,8 @@ Tok: hráč se přihlásí → „Submit a game" (název, popis, odkaz na hru ho
 3. Stripe → Webhooks → URL funkce, eventy `checkout.session.completed`, `invoice.paid`, `customer.subscription.updated`, `customer.subscription.deleted`.
 Pass se ukládá k účtu (`profiles.pass_until`). Hry zatím reklamy vypínají podle vlastního nákupu v každé hře; propojení „pass na účtu = bez reklam ve hrách" je další krok (hry se musí naučit číst přihlášení z hubu).
 
+## Hrát znovu
+Po kole mají všichni tlačítko „Hrát znovu" s 20s odpočtem (x/y hlasů). Jakmile odhlasují všichni lidé (nebo dojde čas), hostitel dostane lobby s nastavením a může rovnou odstartovat další kolo; ostatní čekají v lobby.
+
 ## Přidání vlastní hry napevno
 Složka `nazev/` + záznam v `hub.js → BUILTIN`.

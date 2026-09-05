@@ -9,7 +9,7 @@
       needLogin: "Sign in first.", sent: "Sent! We'll review it soon.", noSupabase: "Accounts aren't set up yet (see README).", toggleUp: "No account? Create one", toggleIn: "Have an account? Sign in",
       pending: "pending", approved: "approved", rejected: "rejected", approve: "Approve", reject: "Reject", by: (n) => `by ${n}`, empty: "Nothing here yet.",
       pass: "Arcade Pass", passDesc: (p) => `No ads in every game · ${p}/month`, passActive: (d) => `Arcade Pass active until ${d}`, getPass: "Get Arcade Pass", passNeedLogin: "Sign in to get the pass.",
-      zigdash: "Tap, flip, dodge. One thumb, leaderboard, daily missions.", splatz: "Paint arena for up to 8. Share a code, fill the rest with bots. 5 modes.", tower: "Race up the tower. Jump, springs, gears, lava. First to the top wins.", front: "Territory strategy. Draw the map together, spawn, expand, conquer 60%.", checkEmail: "Check your e-mail to confirm the account, then sign in." },
+      pcOnly: "PC ONLY", pcLocked: "Needs a mouse – open on a PC", addHint: "Send us your HTML5 game. If it fits, it shows up here with your name.", zigdash: "Tap, flip, dodge. One thumb, leaderboard, daily missions.", splatz: "Paint arena for up to 8. Share a code, fill the rest with bots. 5 modes.", tower: "Race up the tower. Jump, springs, gears, lava. First to the top wins.", front: "Territory strategy. Draw the map together, spawn, expand, conquer 60%.", checkEmail: "Check your e-mail to confirm the account, then sign in." },
     cs: { sub: "Rychlé hry. Sólo nebo s kamarády přes jeden odkaz.", solo: "SÓLO", friends: "S KAMARÁDY", community: "Od komunity", signIn: "Přihlásit", signUp: "Založit účet", signOut: "Odhlásit",
       submitGame: "Poslat hru", mySubs: "Moje hry", admin: "Ke schválení", kine: "Také od nás:", kineDesc: "– videa, živě, tvůrci", lang: "English",
       submitHelp: "Svou HTML5 hru si hostuj kdekoliv (Vercel, GitHub Pages, itch.io) a vlož odkaz. Zahrajeme si ji, a když sedne, objeví se na Arcade s tvým jménem.",
@@ -17,7 +17,7 @@
       needLogin: "Nejdřív se přihlas.", sent: "Odesláno! Brzy se na to podíváme.", noSupabase: "Účty ještě nejsou zapojené (viz README).", toggleUp: "Nemáš účet? Založ si ho", toggleIn: "Máš účet? Přihlas se",
       pending: "čeká", approved: "schváleno", rejected: "zamítnuto", approve: "Schválit", reject: "Zamítnout", by: (n) => `od ${n}`, empty: "Zatím nic.",
       pass: "Arcade Pass", passDesc: (p) => `Bez reklam ve všech hrách · ${p}/měsíc`, passActive: (d) => `Arcade Pass aktivní do ${d}`, getPass: "Pořídit Arcade Pass", passNeedLogin: "Na pass se musíš přihlásit.",
-      zigdash: "Ťukni, otoč se, uhni. Jeden palec, žebříček, denní úkoly.", splatz: "Malovací aréna až pro 8. Pošli kód, zbytek doplní boti. 5 módů.", tower: "Závod nahoru věží. Skoky, pružiny, ozubená kola, láva.", front: "Strategie o území. Nakreslete mapu, naspawnujte se, dobyjte 60 %.", checkEmail: "Potvrď účet v e-mailu a pak se přihlas." },
+      pcOnly: "JEN PC", pcLocked: "Potřebuje myš – otevři na počítači", addHint: "Pošli nám svou HTML5 hru. Když sedne, objeví se tady s tvým jménem.", zigdash: "Ťukni, otoč se, uhni. Jeden palec, žebříček, denní úkoly.", splatz: "Malovací aréna až pro 8. Pošli kód, zbytek doplní boti. 5 módů.", tower: "Závod nahoru věží. Skoky, pružiny, ozubená kola, láva.", front: "Strategie o území. Nakreslete mapu, naspawnujte se, dobyjte 60 %.", checkEmail: "Potvrď účet v e-mailu a pak se přihlas." },
   };
   let lang = localStorage.getItem("arcade_lang") || "en";
   const L = (k, ...a) => { const v = T[lang][k] ?? T.en[k] ?? k; return typeof v === "function" ? v(...a) : v; };
@@ -49,13 +49,15 @@
   function card(g, community) {
     const a = document.createElement("a"); a.className = "card " + (g.kind === "solo" ? "solo" : "friends"); a.href = g.url; if (community) { a.target = "_blank"; a.rel = "noopener"; }
     const img = g.icon || g.icon_url; 
-    a.innerHTML = `${img ? `<img src="${img}" alt="" onerror="this.remove()" />` : ""}<span class="tag">${g.kind === "solo" ? L("solo") : L("friends")}${g.pc ? " · PC" : ""}</span><h3></h3><p></p>${community ? `<small></small>` : ""}`;
+    a.innerHTML = `${img ? `<img src="${img}" alt="" onerror="this.remove()" />` : ""}<span class="tag">${g.kind === "solo" ? L("solo") : L("friends")}</span>${g.pc ? `<span class="tag pcbadge">${L("pcOnly")}</span>` : ""}<h3></h3><p></p>${community ? `<small></small>` : ""}`;
+    if (g.pc) { a.classList.add("pconly"); if (matchMedia("(pointer: coarse)").matches) { a.classList.add("locked"); a.dataset.lock = L("pcLocked"); a.removeAttribute("href"); } }
     a.querySelector("h3").textContent = g.title; a.querySelector("p").textContent = community ? g.description : L(g.slug);
     if (community) a.querySelector("small").textContent = L("by", g.author || "?");
     return a;
   }
   async function renderGames() {
     const grid = $("games"); grid.innerHTML = ""; BUILTIN.forEach(g => grid.appendChild(card(g, false)));
+    const add = document.createElement("div"); add.className = "card add"; add.innerHTML = `<div class="plus">+</div><h3></h3><p></p>`; add.querySelector("h3").textContent = L("submitGame"); add.querySelector("p").textContent = L("addHint"); add.onclick = () => { if (!user) { openAuth(); return; } showPage("submit"); }; grid.appendChild(add);
     if (!sb) return;
     const { data } = await sb.from("games").select("*").order("created_at", { ascending: false });
     const cg = $("community"); cg.innerHTML = "";

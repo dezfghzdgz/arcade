@@ -76,7 +76,7 @@
   $("btn-copy").onclick = async () => { try { await navigator.clipboard.writeText(Net.roomLink(lobby.code)); toast(Lang("copied")); } catch { toast(Net.roomLink(lobby.code), 4000); } };
   $("btn-share-room").onclick = async () => { const url = Net.roomLink(lobby.code); try { if (navigator.share) await navigator.share({ text: Lang("shareRoom", lobby.code) + url }); else { await navigator.clipboard.writeText(url); toast(Lang("copied")); } } catch {} };
   $("btn-leave").onclick = () => leaveToMenu();
-  function leaveToMenu() { hostLoopStop(); if (clientTimer) clientTimer.stop(); clientTimer = null; Net.close(); role = null; world = null; cw = null; view = null; phase = "menu"; refreshMenu(); show("menu"); }
+  function leaveToMenu() { clearInterval(againTick); hostLoopStop(); if (clientTimer) clientTimer.stop(); clientTimer = null; Net.close(); role = null; world = null; cw = null; view = null; phase = "menu"; refreshMenu(); show("menu"); }
 
   // ---------- kolo
   function startRound() {
@@ -332,11 +332,22 @@
     [...$("res-list").querySelectorAll(".nm")].forEach((el, i) => el.textContent = results[i].name);
     $("res-coins").textContent = myResult ? Lang("coinsEarned", myResult.coins) : "";
     $("btn-double").classList.toggle("hidden", !myResult || myResult.coins <= 0); $("btn-double").disabled = false;
-    $("btn-again").classList.toggle("hidden", role === "client"); $("res-wait").classList.toggle("hidden", role !== "client");
+    $("btn-again").classList.remove("hidden"); $("res-wait").classList.add("hidden");
     show("results"); if (role === "host") Net.send("end", { results });
+    startAgain();
   }
   $("btn-double").onclick = async () => { if (doubled || !myResult) return; $("btn-double").disabled = true; const ok = await Monetization.showRewarded(); if (ok) { doubled = true; Storage.addCoins(myResult.coins); $("res-coins").textContent = Lang("coinsEarned", myResult.coins * 2); Audio2.reward(); $("btn-double").classList.add("hidden"); } else { $("btn-double").disabled = false; toast(Lang("adUnavailable")); } };
-  $("btn-again").onclick = () => { openLobby(role === "solo" ? "solo" : Net.kind); if (role === "host") syncLobby(); };
+
+  // ---------- Hrát znovu: hlasování všech lidí, 20 s odpočet; pak hostitel dostane lobby s nastavením
+  let againVotes = new Set(), againLeft = 0, againTick = null;
+  const humansNow = () => (role === "client" ? lobby.players : (world ? world.players : [])).filter(p => !p.bot);
+  function startAgain() { againVotes = new Set(); againLeft = 20; clearInterval(againTick); updateAgain(); againTick = setInterval(() => { againLeft--; updateAgain(); if (againLeft <= 0) { clearInterval(againTick); if (role !== "client") goLobbyAgain(); } }, 1000); }
+  function updateAgain() { const n = humansNow().length; $("btn-again").textContent = (againVotes.has(Net.myId) ? Lang("waitingOthers") : Lang("playAgain")) + (n > 1 ? ` ${againVotes.size}/${n}` : "") + ` · ${againLeft}s`; }
+  $("btn-again").onclick = () => { if (againVotes.has(Net.myId)) return; Audio2.ui(); againVotes.add(Net.myId); if (role === "client") Net.send("again", {}, lobby.hostId); else { Net.send("againVotes", [...againVotes]); checkAgain(); } updateAgain(); };
+  Net.on("again", (p, from) => { if (role !== "host" || phase !== "results") return; againVotes.add(from); Net.send("againVotes", [...againVotes]); updateAgain(); checkAgain(); });
+  Net.on("againVotes", (v) => { if (role === "client" && phase === "results") { againVotes = new Set(v); updateAgain(); } });
+  function checkAgain() { if (humansNow().every(p => againVotes.has(p.id))) { clearInterval(againTick); goLobbyAgain(); } }
+  function goLobbyAgain() { openLobby(role === "solo" ? "solo" : Net.kind); if (role === "host") syncLobby(); }
   $("btn-res-menu").onclick = () => leaveToMenu();
   Missions.onComplete((m) => { toast(Lang("missionDone", m.reward)); Audio2.reward(); });
 
