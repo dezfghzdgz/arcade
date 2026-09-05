@@ -50,18 +50,20 @@
   $("btn-start").onclick = () => { if (role !== "host" || lobby.players.length < 2) { toast(Lang("needTwo")); return; } startGame(); };
   function startGame() {
     const n = lobby.players.length;
-    game = { chains: lobby.players.map(p => ({ owner: p.id, entries: [] })), round: 0, rounds: n, submitted: new Set() };
+    const rounds = Math.min(12, Math.max(n, Math.ceil(6 / n) * n));   // aspoň 6 kroků v albu (ve 2 lidech: napiš, kresli, hádej, kresli, hádej, kresli)
+    game = { chains: lobby.players.map(p => ({ owner: p.id, entries: [] })), round: 0, rounds, submitted: new Set() };
     phase = "game"; Net.send("lobby", { code: lobby.code, hostId: lobby.hostId, players: lobby.players, speed: lobby.speed, phase });
     beginRound();
   }
   const secs = (kind) => Math.round(T[kind] * T.speed[lobby.speed]);
   function beginRound() {
     const r = game.round, n = lobby.players.length;
-    game.submitted = new Set(); game.deadline = Date.now() + secs(r === 0 ? "write" : r % 2 ? "draw" : "guess") * 1000;
+    game.submitted = new Set();
+    const rounds = game.rounds; game.deadline = Date.now() + secs(r === 0 ? "write" : r % 2 ? "draw" : "guess") * 1000;
     lobby.players.forEach((p, i) => {
       const chainIdx = (i + r) % n, chain = game.chains[chainIdx], prev = chain.entries[r - 1];
       const t = r === 0 ? { kind: "write" } : r % 2 ? { kind: "draw", text: prev.text } : { kind: "guess", img: prev.img };
-      Object.assign(t, { chain: chainIdx, round: r, rounds: n, deadline: game.deadline });
+      Object.assign(t, { chain: chainIdx, round: r, rounds, deadline: game.deadline });
       if (p.id === Net.myId) receiveTask(t); else Net.send("task", t, p.id);
     });
     game.timeout = setTimeout(() => finishRound(), game.deadline - Date.now() + 1500);

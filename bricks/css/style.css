@@ -33,3 +33,4 @@ button[disabled] { opacity: .4; pointer-events: none; }
 #lb-list li:nth-child(odd) { background: rgba(255,255,255,.05); } #lb-list li.me { background: rgba(94,225,208,.16); }
 .foot { margin-top: auto; display: flex; gap: 12px; }
 .hidden { display: none !important; }
+#cv { width: min(94vw, 420px); aspect-ratio: 3 / 4; background: var(--bg2); border-radius: 16px; touch-action: none; display: block; }

@@ -59,10 +59,10 @@
     const seen = new Set();
     for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) { const c = grid[y][x]; if (!c) continue; seen.add(c.id);
       let el = tiles.get(c.id); const p = cellPos(x, y);
-      if (!el) { el = document.createElement("div"); el.className = "tile new"; board.appendChild(el); tiles.set(c.id, el); el.style.left = p.left + "px"; el.style.top = p.top + "px"; }
-      el.style.width = el.style.height = p.size + "px"; el.style.left = p.left + "px"; el.style.top = p.top + "px";
-      el.textContent = c.v; el.style.background = COLORS[c.v] || "#fff"; el.style.fontSize = (c.v >= 1024 ? 22 : c.v >= 128 ? 26 : 30) + "px"; el.style.color = c.v >= 1024 ? "#1B1030" : "#1B1030";
-      if (c.merged) { el.classList.remove("merged"); void el.offsetWidth; el.classList.add("merged"); c.merged = false; if (c.from && tiles.get(c.from)) { tiles.get(c.from).remove(); tiles.delete(c.from); } }
+      if (!el) { el = document.createElement("div"); el.className = "tile new"; el.innerHTML = "<span class='in'></span>"; board.appendChild(el); tiles.set(c.id, el); el.style.transform = `translate(${p.left}px, ${p.top}px)`; }
+      el.style.width = el.style.height = p.size + "px"; el.style.transform = `translate(${p.left}px, ${p.top}px)`;
+      const inner = el.firstChild; inner.textContent = c.v; el.style.background = COLORS[c.v] || "#fff"; el.style.fontSize = (c.v >= 1024 ? 22 : c.v >= 128 ? 26 : 30) + "px";
+      if (c.merged) { el.classList.remove("merged"); void el.offsetWidth; el.classList.add("merged"); c.merged = false; if (c.from && tiles.get(c.from)) { const f = tiles.get(c.from); f.style.transform = `translate(${p.left}px, ${p.top}px)`; setTimeout(() => f.remove(), 100); tiles.delete(c.from); } }
     }
     for (const [id, el] of tiles) if (!seen.has(id)) { el.remove(); tiles.delete(id); }
   }

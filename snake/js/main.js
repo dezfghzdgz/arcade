@@ -2,7 +2,7 @@
   const { $, get, set, L, beep } = Arc;
   Arc.texts({ en: { classic: "Classic", walls: "Walls", hint: "Swipe or arrow keys. Tap to start.", gameOver: "Game over", paused: "Paused" }, cs: { classic: "Klasika", walls: "Stěny", hint: "Táhni prstem nebo šipky. Ťuknutím začni.", gameOver: "Konec hry", paused: "Pauza" } });
   const N = 20, cv = $("cv"), ctx = cv.getContext("2d"), S = cv.width / N;
-  let mode = "classic", snake, dir, nextDir, food, score, best = get("sn_best", {}), speed, acc = 0, running = false, over = false, last = 0, grow = 0, bonus = null, bonusT = 0, particles = [];
+  let prev = null; let mode = "classic", snake, dir, nextDir, food, score, best = get("sn_best", {}), speed, acc = 0, running = false, over = false, last = 0, grow = 0, bonus = null, bonusT = 0, particles = [];
   const COLORS = ["#5EE1D0", "#B6FF5A", "#FFCF5A", "#FF9A3C", "#FF5E7E", "#FF7AD9", "#B98CFF", "#6FC3FF"];
   function reset() { snake = [{ x: 10, y: 10 }, { x: 9, y: 10 }, { x: 8, y: 10 }]; dir = { x: 1, y: 0 }; nextDir = dir; score = 0; speed = 6; acc = 0; running = false; over = false; grow = 0; bonus = null; particles = []; placeFood(); $("over").classList.add("hidden"); hud(); draw(); }
   function placeFood() { do { food = { x: Math.floor(Math.random() * N), y: Math.floor(Math.random() * N) }; } while (snake.some(s => s.x === food.x && s.y === food.y)); if (Math.random() < 0.18 && !bonus) { do { bonus = { x: Math.floor(Math.random() * N), y: Math.floor(Math.random() * N) }; } while (snake.some(s => s.x === bonus.x && s.y === bonus.y) || (bonus.x === food.x && bonus.y === food.y)); bonusT = 6; } }
@@ -12,10 +12,11 @@
     dir = nextDir; const h = snake[0]; let nx = h.x + dir.x, ny = h.y + dir.y;
     if (mode === "classic") { nx = (nx + N) % N; ny = (ny + N) % N; } else if (nx < 0 || ny < 0 || nx >= N || ny >= N) return die();
     if (snake.some((s, i) => i < snake.length - (grow ? 0 : 1) && s.x === nx && s.y === ny)) return die();
-    snake.unshift({ x: nx, y: ny });
+    prev = snake.map(s => ({ x: s.x, y: s.y })); snake.unshift({ x: nx, y: ny });
     if (nx === food.x && ny === food.y) { score += 10; grow += 1; speed = Math.min(16, speed + 0.35); beep(700 + Math.min(score, 600), 0.1); burst(food, "#FF5E7E"); placeFood(); }
     else if (bonus && nx === bonus.x && ny === bonus.y) { score += 50; grow += 2; beep(1000, 0.2); burst(bonus, "#FFCF5A"); bonus = null; }
     if (grow > 0) grow--; else snake.pop();
+    if (prev && prev.length > snake.length) prev.length = snake.length;
     if (score > (best[mode] || 0)) { best[mode] = score; set("sn_best", best); }
     hud();
   }
@@ -32,8 +33,10 @@
     ctx.fillStyle = "#4FD37A"; ctx.fillRect((food.x + 0.5) * S - 1.5, (food.y + 0.5) * S - S * 0.45, 3, S * 0.18);
     if (bonus) { ctx.fillStyle = "#FFCF5A"; ctx.save(); ctx.translate((bonus.x + 0.5) * S, (bonus.y + 0.5) * S); ctx.rotate(performance.now() / 300); ctx.beginPath(); for (let i = 0; i < 10; i++) { const a = i * Math.PI / 5, r = i % 2 ? S * 0.18 : S * 0.4; i ? ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r) : ctx.moveTo(r, 0); } ctx.closePath(); ctx.fill(); ctx.restore(); ctx.fillStyle = "rgba(255,255,255,.7)"; ctx.fillRect((bonus.x + 0.1) * S, (bonus.y + 0.9) * S, S * 0.8 * (bonusT / 6), 2); }
     // had – barevný gradient po délce, hlava s očima
-    for (let i = snake.length - 1; i >= 0; i--) { const s = snake[i]; ctx.fillStyle = COLORS[Math.floor(i / 3) % COLORS.length]; const m = i === 0 ? 1 : 3; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(s.x * S + m, s.y * S + m, S - m * 2, S - m * 2, i === 0 ? 8 : 6) : ctx.rect(s.x * S + m, s.y * S + m, S - m * 2, S - m * 2); ctx.fill(); }
-    const h = snake[0]; const ex = dir.x * 5, ey = dir.y * 5; ctx.fillStyle = "#1B1030";
+    const k = running ? Math.min(1, acc * speed) : 1;
+    const ipos = (i) => { const s = snake[i], p = prev && prev[i] ? prev[i] : s; if (Math.abs(p.x - s.x) > 1 || Math.abs(p.y - s.y) > 1) return s; return { x: p.x + (s.x - p.x) * k, y: p.y + (s.y - p.y) * k }; };
+    for (let i = snake.length - 1; i >= 0; i--) { const s = ipos(i); ctx.fillStyle = COLORS[Math.floor(i / 3) % COLORS.length]; const m = i === 0 ? 1 : 3; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(s.x * S + m, s.y * S + m, S - m * 2, S - m * 2, i === 0 ? 8 : 6) : ctx.rect(s.x * S + m, s.y * S + m, S - m * 2, S - m * 2); ctx.fill(); }
+    const h = ipos(0); const ex = dir.x * 5, ey = dir.y * 5; ctx.fillStyle = "#1B1030";
     [[-6, -6], [6, 6]].forEach(([ox, oy]) => { const px = (h.x + 0.5) * S + (dir.x ? ex : ox), py = (h.y + 0.5) * S + (dir.y ? ey : oy); ctx.beginPath(); ctx.arc(px, py, 3, 0, 6.28); ctx.fill(); });
     for (const p of particles) { p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt; ctx.globalAlpha = Math.max(0, p.life * 2); ctx.fillStyle = p.c; ctx.fillRect(p.x - 2, p.y - 2, 4, 4); } ctx.globalAlpha = 1; particles = particles.filter(p => p.life > 0);
     if (!running && !over) { ctx.fillStyle = "rgba(27,16,48,.55)"; ctx.fillRect(0, 0, cv.width, cv.height); ctx.fillStyle = "#fff"; ctx.font = "900 34px Nunito, sans-serif"; ctx.textAlign = "center"; ctx.fillText("▶", cv.width / 2, cv.height / 2 + 12); }

@@ -25,6 +25,8 @@ Tok: hráč se přihlásí → „Submit a game" (název, popis, odkaz na hru ho
 - **Merge** (`merge/`) – sólo 2048 s denní výzvou (stejný seed pro všechny) a globálním žebříčkem. Žebříček potřebuje **`SETUP2.sql`** (obecná tabulka pro další hry).
 - **Snake** (`snake/`) – klasika: režim Klasika (okraje průchozí) a Stěny, bonusové hvězdy, zrychluje s každým jablkem, žebříček.
 - **Mines** (`mines/`) – Minesweeper: Lehká/Střední/Těžká + Denní pole (stejné pro všechny, na čas), první klik vždy bezpečný, chord (klik na číslo odkryje okolí), podržení = vlajka, žebříček nejlepších časů.
+- **Bricks** (`bricks/`) – Breakout: power-upy (×3 míčky, širší pálka, laser, život), nekonečné levely s rostoucí obtížností, žebříček.
+- **Sudoku** (`sudoku/`) – generátor s garancí jediného řešení, Lehké/Střední/Těžké/Denní, poznámky, nápověda, 3 chyby = konec, žebříček časů.
 - Sdílený modul `js/common.js` (jazyk, zvuk, žebříček) – nová sólo hra se dá postavit stejně.
 - Jméno z účtu Arcade se automaticky přebírá do všech her (dokud si ho hráč ve hře nepřepíše).
 
