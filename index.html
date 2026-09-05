@@ -33,6 +33,7 @@
     <h1>Arcade</h1>
     <p class="sub" data-i18n="sub">Quick games. Solo or with friends over one link.</p>
     <div id="pass-banner" class="pass-banner hidden"></div>
+    <div id="install" class="install"><span>📲 <b data-i18n="installT">Install Arcade</b> · <span data-i18n="installD">works offline, no wifi needed for solo games</span></span><div class="acts"><button id="btn-install" class="pass hidden" data-i18n="installBtn">Install app</button><button id="btn-offline" data-i18n="offlineBtn">Save games for offline</button></div></div>
     <div id="games" class="grid"></div>
     <h2 class="section hidden" id="community-h" data-i18n="community">From the community</h2>
     <div id="community" class="grid"></div>
@@ -88,5 +89,6 @@
   <script src="config.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
   <script src="hub.js"></script>
+  <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(() => {});</script>
 </body>
 </html>

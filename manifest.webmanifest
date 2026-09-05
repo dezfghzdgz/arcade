@@ -1,5 +1,5 @@
 {
-  "name": "Arcade", "short_name": "Arcade", "start_url": "./", "display": "standalone",
+  "name": "Arcade", "short_name": "Arcade", "description": "Quick games, solo or with friends. Solo games work offline.", "start_url": "./", "scope": "./", "display": "standalone",
   "background_color": "#160B2E", "theme_color": "#160B2E",
-  "icons": [ { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" }, { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" } ]
+  "icons": [ { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" }, { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" } ]
 }

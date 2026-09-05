@@ -1,6 +1,6 @@
 (() => {
   const { $, get, set, L, beep } = Arc;
-  Arc.texts({ en: { time: "Time", mistakes: "Mistakes", easy: "Easy", mid: "Medium", hard: "Hard", daily: "Daily", win: "Solved!", lose: "3 mistakes", notes: "Notes", erase: "Erase", hint: "Hint", bestTime: (s) => `Best: ${s}` }, cs: { time: "Čas", mistakes: "Chyby", easy: "Lehké", mid: "Střední", hard: "Těžké", daily: "Denní", win: "Vyřešeno!", lose: "3 chyby", notes: "Poznámky", erase: "Smazat", hint: "Nápověda", bestTime: (s) => `Nejlepší: ${s}` } });
+  Arc.texts({ en: { time: "Time", mistakes: "Mistakes", easy: "Easy", mid: "Medium", hard: "Hard", daily: "Daily", win: "Solved!", lose: "3 mistakes", notes: "Notes", erase: "Erase", hint: "Hint", bestTime: (s) => `Best: ${s}`, adTitle: "Hint for an ad", adNote: "First hint is free. Watch a short ad for more. (Simulated on web; real rewarded ad in the app.)" }, cs: { time: "Čas", mistakes: "Chyby", easy: "Lehké", mid: "Střední", hard: "Těžké", daily: "Denní", win: "Vyřešeno!", lose: "3 chyby", notes: "Poznámky", erase: "Smazat", hint: "Nápověda", bestTime: (s) => `Nejlepší: ${s}`, adTitle: "Nápověda za reklamu", adNote: "První nápověda je zdarma. Další za krátkou reklamu. (Na webu simulace, v appce skutečná odměněná reklama.)" } });
   const HOLES = { easy: 38, mid: 48, hard: 55, daily: 50 };
   let mode = "easy", sol, puzzle, board, notes, given, sel = -1, noteMode = false, mistakes = 0, t0, timer, over = false, best = get("su_best", {}), rand = Math.random;
   const today = () => new Date().toISOString().slice(0, 10);
@@ -41,7 +41,15 @@
     if (n) { if (n !== sol[sel]) { mistakes++; beep(200, 0.2, "sawtooth", 0.1); if (mistakes >= 3) { lose(); render(); return; } } else { beep(600, 0.05); const r = (sel / 9) | 0, c = sel % 9; for (let k = 0; k < 81; k++) if (((k / 9) | 0) === r || k % 9 === c || ((((k / 9) | 0) / 3) | 0) === ((r / 3) | 0) && (((k % 9) / 3) | 0) === ((c / 3) | 0)) notes[k].delete(n); } }
     render(); if (board.every((v, i) => v === sol[i])) win();
   }
-  function hint() { if (over) return; const empties = board.map((v, i) => v !== sol[i] ? i : -1).filter(i => i >= 0); if (!empties.length) return; const i = empties[Math.floor(Math.random() * empties.length)]; board[i] = sol[i]; given[i] = true; sel = i; beep(800, 0.1); render(); if (board.every((v, k) => v === sol[k])) win(); }
+  let hintsUsed = 0;
+  // 1. nápověda zdarma, další za zhlédnutí reklamy (na webu simulace, v appce AdMob rewarded)
+  function hint() { if (over) return; if (hintsUsed >= 1) { showAd(() => { doHint(); }); return; } doHint(); }
+  function showAd(cb) {
+    const ov = document.createElement("div"); ov.className = "overlay"; ov.innerHTML = `<div class="card"><h2>${L("adTitle")}</h2><div class="big-num" id="ad-n">3</div><div class="dim">${L("adNote")}</div><button id="ad-x">${L("close")}</button></div>`; document.body.appendChild(ov);
+    let n = 3; const iv = setInterval(() => { n--; ov.querySelector("#ad-n").textContent = n; if (n <= 0) { clearInterval(iv); ov.remove(); cb(); } }, 1000);
+    ov.querySelector("#ad-x").onclick = () => { clearInterval(iv); ov.remove(); };
+  }
+  function doHint() { if (over) return; hintsUsed++; const empties = board.map((v, i) => v !== sol[i] ? i : -1).filter(i => i >= 0); if (!empties.length) return; const i = empties[Math.floor(Math.random() * empties.length)]; board[i] = sol[i]; given[i] = true; sel = i; beep(800, 0.1); render(); if (board.every((v, k) => v === sol[k])) win(); }
   function lose() { over = true; clearInterval(timer); $("over").classList.remove("hidden"); $("over-title").textContent = L("lose"); $("over-score").textContent = "✖"; $("over-rank").textContent = ""; }
   async function win() { over = true; clearInterval(timer); const s = Math.round((Date.now() - t0) / 1000), f = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; beep(880, 0.3); setTimeout(() => beep(1320, 0.4), 120); if (!best[mode] || s < best[mode]) { best[mode] = s; set("su_best", best); } $("over").classList.remove("hidden"); $("over-title").textContent = L("win"); $("over-score").textContent = f; $("over-rank").textContent = L("bestTime", `${Math.floor(best[mode] / 60)}:${String(best[mode] % 60).padStart(2, "0")}`); const r = await Arc.submit("sudoku_" + mode, Math.max(1, 100000 - s)); if (r) $("over-rank").textContent += " · " + L("rank", r); }
   window.addEventListener("keydown", (e) => { if (e.target.tagName === "INPUT") return; if (e.key >= "1" && e.key <= "9") enter(+e.key); if (e.key === "Backspace" || e.key === "Delete" || e.key === "0") enter(0); if (e.key === "n") { noteMode = !noteMode; render(); } const d = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -9, ArrowDown: 9 }[e.key]; if (d !== undefined && sel >= 0) { e.preventDefault(); sel = Math.max(0, Math.min(80, sel + d)); render(); } });
