@@ -131,6 +131,7 @@
   function startRound() {
     doubled = false; myResult = null; runStats = { jumps: 0, deaths: 0, floors: 0, finishes: 0 };
     Sim.resetRound(world, Date.now(), { mode: lobby.mode, height: lobby.seconds, bots: lobby.opts.bots });
+    world.plats.forEach(pl => pl.cracked = false);
     lobby.players = Sim.lobbyInfo(world);
     if (role === "host") Net.send("start", { seed: world.seed, mode: lobby.mode, seconds: lobby.seconds, opts: lobby.opts, players: lobby.players });
     phase = "game"; roundStart = performance.now();
@@ -153,7 +154,7 @@
     }, 1000 / T.tickRate);
   }
   function hostLoopStop() { if (hostTimer) hostTimer.stop(); hostTimer = null; }
-  function snapPayload(ev) { return { p: Sim.packPlayers(world), wt: Math.round(world.t * 100) / 100, t: Math.round(world.time * 10) / 10, ph: world.phase, cd: world.countdown, lava: Math.round(world.lava), ev }; }
+  function snapPayload(ev) { return { p: Sim.packPlayers(world), wt: Math.round(world.t * 100) / 100, t: Math.round(world.time * 10) / 10, ph: world.phase, cd: world.countdown, lava: Math.round(world.lava), g: [...world.gone], cr: world.plats.filter(pl => pl.used !== undefined).map(pl => pl.idx), c: world.mode === "coins" ? world.coins.map(c => c.id) : undefined, ev }; }
   function sendFull(to) { Net.send("full", Object.assign(snapPayload([]), { full: 1, seed: world.seed, mode: world.mode, seconds: lobby.seconds, opts: lobby.opts, players: lobby.players }), to); }
 
   // ---------- klient
@@ -191,25 +192,28 @@
     const m = Sim.addPlayer(cw, { id: Net.myId, name: info.name, hat: info.hat, pattern: info.pattern });
     m.slot = Math.max(0, idx); m.ci = info.ci; m.x = 40 + (m.slot % 8) * 40;
     remote.clear();
-    view = { plats: cw.plats, top: cw.top, players: [], t: 0, lava: -200, time: T.timeLimit, phase: "countdown", countdown: 3, mode };
+    view = { plats: cw.plats, top: cw.top, players: [], t: 0, lava: -200, time: cw.time, phase: "countdown", countdown: 3, mode, gone: cw.gone, coins: cw.coins };
     phase = "game"; roundStart = performance.now();
     beginGameUI(); clientLoopStart();
   }
   function applySnap(p) {
     Object.assign(view, { time: p.t, phase: p.ph, countdown: p.cd, lava: p.lava });
     cw.phase = p.ph; cw.lava = p.lava; cw.t += (p.wt - cw.t) * 0.5;
+    if (p.g) { cw.gone = new Set(p.g); view.gone = cw.gone; }
+    if (p.cr) for (const idx of p.cr) cw.plats[idx].cracked = true;
+    if (p.c) { const ids = new Set(p.c); cw.coins = cw.coins.filter(c => ids.has(c.id)); view.coins = cw.coins; }
     for (const a of p.p) {
-      const [id, x, y, dir, fl, best, done] = a;
+      const [id, x, y, dir, fl, best, done, score] = a;
       const flags = { ground: !!(fl & 1), dead: !!(fl & 8), out: !!(fl & 16), done: !!(fl & 32) };
       if (id === Net.myId) {
         const m = cw.players[0]; const d = Math.hypot(m.x - x, m.y - y);
         if (flags.dead || flags.out || flags.done) { m.x = x; m.y = y; m.vx = m.vy = 0; }
         else if (d > 60) { m.x = x; m.y = y; } else { m.x += (x - m.x) * 0.12; m.y += (y - m.y) * 0.12; }
-        m.dead = flags.dead ? 1 : 0; m.out = flags.out; m.done = done; m.best = Math.max(m.best, best);
+        m.dead = flags.dead ? 1 : 0; m.out = flags.out; m.done = done; m.best = Math.max(m.best, best); m.score = score;
         continue;
       }
       let r = remote.get(id); if (!r) { r = { x, y, dx: x, dy: y, dir }; remote.set(id, r); }
-      Object.assign(r, flags, { tx: x, ty: y, dir, best, done });
+      Object.assign(r, flags, { tx: x, ty: y, dir, best, done, score });
     }
     if (p.ev && p.ev.length) handleEvents(p.ev);
   }
@@ -244,6 +248,9 @@
       else if (e.t === "out") { Render.burst(e.x + 8, e.y + 10, "#FF5E7E", 20, 200); Render.popup(e.x + 8, e.y + 40, Lang("out", nameOf(e.id)), "#FF5E7E"); Audio2.bomb(); if (mine) Render.kick(1); }
       else if (e.t === "finish") { Render.burst(e.x + 8, e.y + 10, colorOf(e.id), 24, 220); Render.popup(e.x + 8, e.y + 40, Lang("finished", nameOf(e.id), e.rank), "#FFCF5A"); if (mine) { runStats.finishes++; Audio2.win(); vibrate([20, 40, 20]); } else Audio2.tick(); }
       else if (e.t === "lastcall") { toast(Lang("lastCall"), 2500); Audio2.whistle(); }
+      else if (e.t === "coin") { if (mine) { Audio2.pickup(); } Render.burst(e.x, e.y, "#FFCF5A", 6, 100); }
+      else if (e.t === "crack") { if (role !== "client" && world.plats[e.idx]) world.plats[e.idx].cracked = true; Audio2.tick(); }
+      else if (e.t === "crumble") { Render.burst(e.x + 20, e.y, "#C9A27E", 12, 120); }
     }
   }
   function myPos() { if (role === "client") return cw.players[0]; const p = world && world.players.find(p => p.id === Net.myId); return p; }
@@ -253,7 +260,7 @@
     show("hud");
     $("hud-hint").textContent = isTouch ? Lang("hintMobile") : Lang("hintPc");
     setTimeout(() => { $("hud-hint").textContent = ""; }, 5000);
-    $("btn-dash").classList.toggle("hidden", !isTouch); $("btn-dash").textContent = "JUMP"; $("btn-left").classList.toggle("hidden", !isTouch); $("btn-right").classList.toggle("hidden", !isTouch);
+    $("btn-dash").classList.toggle("hidden", !isTouch); $("btn-dash").textContent = "JUMP"; $("btn-spec-leave").classList.add("hidden"); $("btn-left").classList.toggle("hidden", !isTouch); $("btn-right").classList.toggle("hidden", !isTouch);
     let ml = $("hud-mode"); if (!ml) { ml = document.createElement("div"); ml.id = "hud-mode"; ml.className = "hud-mode"; $("hud").appendChild(ml); }
     ml.textContent = Lang.mode(lobby.mode);
     $("hud-bars").innerHTML = "";
@@ -266,17 +273,18 @@
       const players = [];
       lobby.players.forEach((lp) => {
         const color = Sim.COLORS[lp.ci];
-        if (lp.id === Net.myId) { const m = cw.players[0]; players.push({ x: m.x, y: m.y, dir: m.dir, color, name: lp.name, hat: lp.hat, pattern: lp.pattern, ground: m.ground, dead: m.dead > 0, out: m.out, done: m.done, best: m.best, me: true, meLabel: meLabel() }); }
-        else { const r = remote.get(lp.id); if (!r) return; players.push({ x: r.dx, y: r.dy, dir: r.dir, color, name: lp.name, hat: lp.hat, pattern: lp.pattern, ground: r.ground, dead: r.dead, out: r.out, done: r.done, best: r.best }); }
+        if (lp.id === Net.myId) { const m = cw.players[0]; players.push({ x: m.x, y: m.y, dir: m.dir, color, name: lp.name, hat: lp.hat, pattern: lp.pattern, ground: m.ground, dead: m.dead > 0, out: m.out, done: m.done, best: m.best, score: m.score, me: true, meLabel: meLabel() }); }
+        else { const r = remote.get(lp.id); if (!r) return; players.push({ x: r.dx, y: r.dy, dir: r.dir, color, name: lp.name, hat: lp.hat, pattern: lp.pattern, ground: r.ground, dead: r.dead, out: r.out, done: r.done, best: r.best, score: r.score }); }
       });
-      view.players = players; view.showMe = showMe; view.t = cw.t;
+      view.players = players; view.showMe = showMe; view.t = cw.t; view.follow = followTarget(players); view.watchLabel = Lang("watching");
       return view;
     }
-    return {
-      plats: world.plats, top: world.top, t: world.t, lava: world.lava, time: world.time, phase: world.phase, countdown: world.countdown, showMe, mode: world.mode,
-      players: world.players.map(p => ({ x: p.x, y: p.y, dir: p.dir, color: Sim.colorOf(world, p), name: p.name, hat: p.hat, pattern: p.pattern, ground: p.ground, dead: p.dead > 0, out: p.out, done: p.done, best: p.best, me: p.id === Net.myId, meLabel: meLabel() })),
-    };
+    const players = world.players.map(p => ({ x: p.x, y: p.y, dir: p.dir, color: Sim.colorOf(world, p), name: p.name, hat: p.hat, pattern: p.pattern, ground: p.ground, dead: p.dead > 0, out: p.out, done: p.done, best: p.best, score: p.score, me: p.id === Net.myId, meLabel: meLabel() }));
+    return { plats: world.plats, top: world.top, t: world.t, lava: world.lava, time: world.time, phase: world.phase, countdown: world.countdown, showMe, mode: world.mode, gone: world.gone, coins: world.coins, players, follow: followTarget(players), watchLabel: Lang("watching") };
   }
+  // po vypadnutí sleduji nejvýš postaveného živého hráče
+  function followTarget(players) { const me = players.find(p => p.me); if (!me || !(me.out || me.done)) { $("btn-spec-leave").classList.add("hidden"); return null; } $("btn-spec-leave").classList.remove("hidden"); return players.filter(p => !p.out && !p.done && !p.me).sort((a, b) => b.y - a.y)[0] || null; }
+  $("btn-spec-leave").onclick = () => { if (role === "client") leaveToMenu(); else if (role === "solo") { hostLoopStop(); world.phase = "end"; world.results = Sim.results(world); endRound(world.results); } else toast(Lang("hostCantLeave")); };
   let lastFrame = performance.now(), barsAcc = 0;
   function frame(now) {
     const dt = Math.min(0.1, (now - lastFrame) / 1000); lastFrame = now;
@@ -290,8 +298,10 @@
   function renderBars() {
     const bars = $("hud-bars"), top = (role === "client" ? cw : world).top;
     const bestOf = (lp, i) => { if (role !== "client") { const p = world.players[i]; return p ? p.best : 0; } const r = lp.id === Net.myId ? cw.players[0] : remote.get(lp.id); return r ? r.best || 0 : 0; };
-    const rows = lobby.players.map((lp, i) => ({ color: Sim.COLORS[lp.ci], me: lp.id === Net.myId, v: bestOf(lp, i) }));
-    const max = top;
+    const scoreOf = (lp, i) => { if (role !== "client") { const p = world.players[i]; return p ? p.score : 0; } const r = lp.id === Net.myId ? cw.players[0] : remote.get(lp.id); return r ? r.score || 0 : 0; };
+    const coinsMode = lobby.mode === "coins";
+    const rows = lobby.players.map((lp, i) => ({ color: Sim.COLORS[lp.ci], me: lp.id === Net.myId, v: coinsMode ? scoreOf(lp, i) : bestOf(lp, i) }));
+    const max = coinsMode ? Math.max(5, ...rows.map(r => r.v)) : top;
     if (bars.childElementCount !== rows.length) bars.innerHTML = rows.map(r => `<div class="hud-bar${r.me ? " me" : ""}"><i style="background:${r.color}"></i></div>`).join("");
     rows.forEach((r, i) => { const el = bars.children[i]; el.firstChild.style.width = Math.min(100, 100 * r.v / max) + "%"; el.firstChild.style.background = r.color; el.classList.toggle("me", r.me); });
   }

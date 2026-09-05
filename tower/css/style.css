@@ -135,3 +135,5 @@ input:focus { outline: none; border-color: var(--aqua); }
 .dash.dir { left: 18px; right: auto; width: 66px; height: 66px; font-size: 22px; background: var(--bg-2); box-shadow: 0 5px 0 #14102A; }
 .dash.dir.right { left: 96px; }
 .dash { user-select: none; -webkit-user-select: none; touch-action: none; }
+
+.spec-leave { position: absolute; top: max(80px, calc(env(safe-area-inset-top) + 72px)); left: 50%; transform: translateX(-50%); pointer-events: auto; font-size: 14px; padding: 8px 18px; }

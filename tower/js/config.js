@@ -14,8 +14,9 @@ window.TW_CONFIG = {
     coyote: 0.09, jumpBuffer: 0.12,
     spring: 1.75,          // násobek skoku
     lavaStart: 4,          // s po startu
-    lavaSpeed: 34,         // px/s, roste
+    lavaSpeed: 26,         // px/s, roste
     timeLimit: 150,        // pojistka v sekundách
-    tickRate: 30, snapRate: 8,
+    tickRate: 60, snapRate: 10,
+    botSpeed: 0.55,        // rychlost bota = botSpeed + skill*0.3 (× rychlost hráče)
   },
 };

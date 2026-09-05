@@ -48,7 +48,8 @@ window.Render = (() => {
   const sy = (y) => H - (y - camY);                       // svět -> obrazovka
   function draw(view, dt) {
     tickFx(dt);
-    const me = view.players.find(p => p.me);
+    const meP = view.players.find(p => p.me);
+    const me = meP && (meP.out || meP.done) && view.follow ? view.follow : meP;
     const targetCam = me ? me.y - H * 0.42 : 0;
     if (!camInit || view.phase === "idle") { camY = Math.max(-40, targetCam); camInit = view.phase !== "idle"; }
     else camY += (Math.max(-40, targetCam) - camY) * Math.min(1, dt * 6);
@@ -67,26 +68,33 @@ window.Render = (() => {
     for (let y = -((camY * 0.6) % 34); y < H; y += 34) { ctx.fillRect(0, y, 10, 1); ctx.fillRect(W - 10, y, 10, 1); }
 
     // plošiny v záběru
+    const gone = view.gone || new Set();
     for (const p of view.plats) {
-      const y = sy(p.y); if (y < -30 || y > H + 30) continue;
+      const y = sy(p.y); if (y < -30 || y > H + 30 || gone.has(p.idx)) continue;
       const x = Sim.platX(p, view.t);
       if (p.kind === "floor") { ctx.fillStyle = "#3A3155"; ctx.fillRect(0, y, W, H); ctx.fillStyle = "#5EE1D0"; ctx.fillRect(0, y, W, 3); continue; }
       if (p.kind === "finish") { ctx.fillStyle = "#FFCF5A"; ctx.fillRect(0, y, W, 6); for (let i = 0; i < W; i += 20) { ctx.fillStyle = (i / 20) % 2 ? "#2B2440" : "#fff"; ctx.fillRect(i, y - 12, 20, 12); } continue; }
-      ctx.fillStyle = p.kind === "spring" ? "#FFCF5A" : p.kind === "check" ? "#5EE1D0" : p.kind === "move" ? "#B98CFF" : "#F4F0E8";
+      ctx.fillStyle = p.kind === "spring" ? "#FFCF5A" : p.kind === "check" ? "#5EE1D0" : p.kind === "move" ? "#B98CFF" : p.kind === "ice" ? "#BFEFFF" : p.kind === "conveyor" ? "#3A3155" : p.kind === "crumble" ? "#C9A27E" : "#F4F0E8";
       roundRect(x, y, p.w, 10, 4);
       ctx.fillStyle = "rgba(0,0,0,.18)"; ctx.fillRect(x + 2, y + 6, p.w - 4, 3);
+      if (p.kind === "ice") { ctx.fillStyle = "rgba(255,255,255,.7)"; ctx.fillRect(x + 6, y + 2, p.w * 0.4, 2); }
+      if (p.kind === "conveyor") { ctx.fillStyle = "#FFCF5A"; const off = ((t * 60 * p.dir) % 14 + 14) % 14; for (let i = -14; i < p.w; i += 14) { const ax = x + i + off; if (ax < x + 2 || ax + 8 > x + p.w - 2) continue; ctx.beginPath(); ctx.moveTo(ax, y + 2); ctx.lineTo(ax + 5 * p.dir, y + 5); ctx.lineTo(ax, y + 8); ctx.fill(); } }
+      if (p.kind === "crumble") { ctx.strokeStyle = "rgba(0,0,0,.35)"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x + p.w * 0.3, y + 1); ctx.lineTo(x + p.w * 0.36, y + 6); ctx.lineTo(x + p.w * 0.3, y + 9); ctx.moveTo(x + p.w * 0.65, y + 1); ctx.lineTo(x + p.w * 0.6, y + 5); ctx.lineTo(x + p.w * 0.68, y + 9); ctx.stroke(); if (p.cracked) { ctx.fillStyle = "rgba(255,94,126,.5)"; ctx.fillRect(x, y, p.w, 10); } }
       if (p.kind === "spring") { ctx.strokeStyle = "#C48F14"; ctx.lineWidth = 2; ctx.beginPath(); for (let i = 0; i < 4; i++) { ctx.moveTo(x + p.w / 2 - 6, y - i * 3); ctx.lineTo(x + p.w / 2 + 6, y - i * 3 - 1.5); } ctx.stroke(); }
       if (p.kind === "move") { ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.moveTo(x + 6, y + 5); ctx.lineTo(x + 12, y + 1); ctx.lineTo(x + 12, y + 9); ctx.fill(); ctx.beginPath(); ctx.moveTo(x + p.w - 6, y + 5); ctx.lineTo(x + p.w - 12, y + 1); ctx.lineTo(x + p.w - 12, y + 9); ctx.fill(); }
       if (p.kind === "spike") { ctx.fillStyle = "#FF5E7E"; for (let i = 0; i < p.sw; i += 8) { ctx.beginPath(); ctx.moveTo(p.sx + i, y); ctx.lineTo(p.sx + i + 4, y - 9); ctx.lineTo(p.sx + i + 8, y); ctx.fill(); } }
       if (p.kind === "check") { ctx.fillStyle = "#5EE1D0"; ctx.fillRect(x + p.w / 2 - 1, y - 22, 2, 22); ctx.fillStyle = "#FF5E7E"; ctx.beginPath(); ctx.moveTo(x + p.w / 2 + 1, y - 22); ctx.lineTo(x + p.w / 2 + 14, y - 17); ctx.lineTo(x + p.w / 2 + 1, y - 12); ctx.fill(); ctx.fillStyle = "rgba(255,255,255,.6)"; ctx.font = "800 9px Nunito, sans-serif"; ctx.textAlign = "left"; ctx.fillText(p.i + "F", x + 4, y - 3); }
     }
+    // mince
+    for (const c of view.coins || []) { const y = sy(c.y); if (y < -10 || y > H + 10) continue; const sq = 0.7 + Math.abs(Math.sin(t * 4 + c.id)) * 0.3; ctx.fillStyle = "#FFCF5A"; ctx.beginPath(); ctx.ellipse(c.x, y, 5 * sq, 5, 0, 0, 6.28); ctx.fill(); ctx.fillStyle = "#C48F14"; ctx.beginPath(); ctx.ellipse(c.x, y, 3 * sq, 3, 0, 0, 6.28); ctx.fill(); }
     // kruhy
     for (const r of rings) { ctx.globalAlpha = Math.max(0, r.life * 2); ctx.strokeStyle = r.c; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(r.x, sy(r.y), r.r, 0, 6.28); ctx.stroke(); }
     ctx.globalAlpha = 1;
     // hráči (já naposled)
     const ps = view.players.filter(p => !p.dead && !p.out).sort((a, b) => (a.me ? 1 : 0) - (b.me ? 1 : 0));
     for (const p of ps) drawPlayer(p);
-    if (view.showMe && me && !me.dead) drawMeArrow({ x: me.x + Sim.PW / 2, y: sy(me.y) - Sim.PH / 2, meLabel: me.meLabel }, view.showMe);
+    if (view.showMe && meP && !meP.dead && !meP.out) drawMeArrow({ x: meP.x + Sim.PW / 2, y: sy(meP.y) - Sim.PH / 2, meLabel: meP.meLabel }, view.showMe);
+    if (me !== meP && me) { ctx.fillStyle = "rgba(255,255,255,.85)"; ctx.font = "800 14px Nunito, sans-serif"; ctx.textAlign = "center"; ctx.fillText((view.watchLabel || "Watching") + ": " + me.name, W / 2, 60); }
     // láva
     if (view.lava !== undefined && view.lava > -150) {
       const ly = sy(view.lava);
@@ -104,7 +112,7 @@ window.Render = (() => {
     for (const p of popups) { ctx.globalAlpha = p.life; ctx.fillStyle = p.c; ctx.lineWidth = 3; ctx.strokeStyle = "rgba(0,0,0,.5)"; ctx.strokeText(p.text, p.x, sy(p.y)); ctx.fillText(p.text, p.x, sy(p.y)); }
     ctx.globalAlpha = 1;
     // výška
-    if (me) { ctx.fillStyle = "rgba(255,255,255,.7)"; ctx.font = "800 12px Nunito, sans-serif"; ctx.textAlign = "right"; ctx.fillText(Math.round(me.best / 78) + " F", W - 8, H - 10); }
+    if (meP) { ctx.fillStyle = "rgba(255,255,255,.7)"; ctx.font = "800 12px Nunito, sans-serif"; ctx.textAlign = "right"; ctx.fillText(Math.round(meP.best / 78) + " F" + (view.mode === "coins" ? "  ● " + (meP.score || 0) : ""), W - 8, H - 10); }
     if (view.phase === "countdown") { ctx.fillStyle = "rgba(10,6,20,.45)"; ctx.fillRect(0, 0, W, H); ctx.fillStyle = "#fff"; ctx.font = "800 96px Nunito, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(Math.max(1, Math.ceil(view.countdown)), W / 2, H / 2); ctx.textBaseline = "alphabetic"; }
   }
   function lerpColor(a, b, k) { const pa = [1, 3, 5].map(i => parseInt(a.slice(i, i + 2), 16)), pb = [1, 3, 5].map(i => parseInt(b.slice(i, i + 2), 16)); return "rgb(" + pa.map((v, i) => Math.round(v + (pb[i] - v) * k)).join(",") + ")"; }
