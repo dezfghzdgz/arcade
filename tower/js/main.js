@@ -192,7 +192,7 @@
     const m = Sim.addPlayer(cw, { id: Net.myId, name: info.name, hat: info.hat, pattern: info.pattern });
     m.slot = Math.max(0, idx); m.ci = info.ci; m.x = 40 + (m.slot % 8) * 40;
     remote.clear();
-    view = { plats: cw.plats, top: cw.top, players: [], t: 0, lava: -200, time: cw.time, phase: "countdown", countdown: 3, mode, gone: cw.gone, coins: cw.coins };
+    view = { plats: cw.plats, gears: cw.gears, top: cw.top, players: [], t: 0, lava: -200, time: cw.time, phase: "countdown", countdown: 3, mode, gone: cw.gone, coins: cw.coins };
     phase = "game"; roundStart = performance.now();
     beginGameUI(); clientLoopStart();
   }
@@ -280,7 +280,7 @@
       return view;
     }
     const players = world.players.map(p => ({ x: p.x, y: p.y, dir: p.dir, color: Sim.colorOf(world, p), name: p.name, hat: p.hat, pattern: p.pattern, ground: p.ground, dead: p.dead > 0, out: p.out, done: p.done, best: p.best, score: p.score, me: p.id === Net.myId, meLabel: meLabel() }));
-    return { plats: world.plats, top: world.top, t: world.t, lava: world.lava, time: world.time, phase: world.phase, countdown: world.countdown, showMe, mode: world.mode, gone: world.gone, coins: world.coins, players, follow: followTarget(players), watchLabel: Lang("watching") };
+    return { plats: world.plats, gears: world.gears, top: world.top, t: world.t, lava: world.lava, time: world.time, phase: world.phase, countdown: world.countdown, showMe, mode: world.mode, gone: world.gone, coins: world.coins, players, follow: followTarget(players), watchLabel: Lang("watching") };
   }
   // po vypadnutí sleduji nejvýš postaveného živého hráče
   function followTarget(players) { const me = players.find(p => p.me); if (!me || !(me.out || me.done)) { $("btn-spec-leave").classList.add("hidden"); return null; } $("btn-spec-leave").classList.remove("hidden"); return players.filter(p => !p.out && !p.done && !p.me).sort((a, b) => b.y - a.y)[0] || null; }

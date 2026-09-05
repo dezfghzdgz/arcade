@@ -16,7 +16,7 @@ window.Sim = (() => {
   // ---------- generování věže
   function genLevel(seed, floors) {
     const rand = mulberry(seed);
-    const plats = [{ x: 0, w: W, y: 0, kind: "floor", main: true, i: 0 }];
+    const plats = [{ x: 0, w: W, y: 0, kind: "floor", main: true, i: 0 }], gears = [];
     let y = 0, lastC = W / 2;
     for (let i = 1; i <= floors; i++) {
       y += 62 + rand() * 20;
@@ -26,7 +26,7 @@ window.Sim = (() => {
       const roll = rand(), hard = Math.min(1, i / 25);      // obtížnost roste s výškou
       let kind = "static";
       if (i > 4 && roll < 0.12 + hard * 0.12 && w >= 105) kind = "spike";
-      else if (i > 3 && roll < 0.30 + hard * 0.1) kind = "ice";
+      else if (i > 3 && roll < 0.20 + hard * 0.06) kind = "ice";
       else if (i > 5 && roll < 0.42 + hard * 0.1) kind = "conveyor";
       if (i % 10 === 0) kind = "check";
       const p = { x: c - w / 2, w, y, kind, i, main: true };
@@ -40,18 +40,22 @@ window.Sim = (() => {
         const c2 = c + side * (w / 2 + w2 / 2 + 24 + rand() * 40);
         if (c2 - w2 / 2 < 0 || c2 + w2 / 2 > W) continue;
         const r2 = rand(); const q = { x: c2 - w2 / 2, w: w2, y: y + (rand() - 0.5) * 10, kind: r2 < 0.35 ? "spring" : r2 < 0.6 ? "move" : r2 < 0.85 ? "crumble" : "ice", i, main: false };
-        if (q.kind === "move") { q.amp = 30 + rand() * 35; q.spd = 0.9 + rand() * 0.8; q.ph = rand() * 6.28; q.x = clamp(q.x, q.amp, W - w2 - q.amp); }
+        if (q.kind === "move") { q.amp = 50 + rand() * 50; q.spd = 1.3 + rand() * 1.0; q.ph = rand() * 6.28; q.x = clamp(q.x, q.amp, W - w2 - q.amp); }
         plats.push(q);
       }
+      // ozubené kolo: točí se a jezdí vodorovně mezi patry, dotyk = smrt
+      if (i > 8 && rand() < 0.08 + hard * 0.1) { const r = 14 + rand() * 6; gears.push({ x: 60 + rand() * (W - 120), y: y + 34 + rand() * 12, r, amp: 60 + rand() * 90, spd: 0.9 + rand() * 0.9, ph: rand() * 6.28, i }); }
       // mince na některých plošinách (mód Mince je sbírá, jinde jsou jen dekorace = nejsou)
       lastC = c;
     }
     const top = y + 90;
     plats.push({ x: 0, w: W, y: top, kind: "finish", main: true, i: floors + 1 });
     plats.forEach((p, idx) => p.idx = idx);
-    return { plats, top, floors };
+    gears.forEach(g => g.x = clamp(g.x, g.amp + g.r, W - g.amp - g.r));
+    return { plats, gears, top, floors };
   }
   const platX = (p, t) => p.kind === "move" ? p.x + Math.sin(t * p.spd + p.ph) * p.amp : p.x;
+  const gearX = (g, t) => g.x + Math.sin(t * g.spd + g.ph) * g.amp;
   function genCoins(seed, plats) {
     const rand = mulberry(seed * 7 + 1); const out = []; let id = 1;
     for (const p of plats) { if (p.kind === "floor" || p.kind === "finish") continue; const n = rand() < 0.45 ? 1 + Math.floor(rand() * 3) : 0; for (let k = 0; k < n; k++) out.push({ id: id++, x: p.x + 10 + rand() * (p.w - 20), y: p.y + 14 + (p.kind === "spring" ? 40 : 0), pi: plats.indexOf(p) }); }
@@ -65,7 +69,7 @@ window.Sim = (() => {
     const lvl = genLevel(seed || 1, floors);
     const coins = mode === "coins" ? genCoins(seed, lvl.plats) : [];
     const time = mode === "endless" ? 60 : mode === "coins" ? 90 : T.timeLimit;
-    return { seed, mode, teams: false, floors, plats: lvl.plats, top: lvl.top, coins, gone: new Set(), players: [], t: 0, time, roundTime: time, phase: "countdown", countdown: 3, events: [], lava: -200, lavaOn: mode === "lava", finished: 0, client: !!opts.client };
+    return { seed, mode, teams: false, floors, plats: lvl.plats, gears: lvl.gears, top: lvl.top, coins, gone: new Set(), players: [], t: 0, time, roundTime: time, phase: "countdown", countdown: 3, events: [], lava: -200, lavaOn: mode === "lava", finished: 0, client: !!opts.client };
   }
   function addPlayer(w, p) {
     const idx = w.players.length; if (idx >= T.maxPlayers) return null;
@@ -79,7 +83,7 @@ window.Sim = (() => {
 
   function resetRound(w, seed, opts = {}) {
     const f = create(seed, opts);
-    Object.assign(w, { seed, mode: f.mode, floors: f.floors, plats: f.plats, top: f.top, coins: f.coins, gone: new Set(), t: 0, time: f.time, roundTime: f.roundTime, phase: "countdown", countdown: 3, events: [], lava: -200, lavaOn: f.lavaOn, finished: 0, lastCall: false, results: null });
+    Object.assign(w, { seed, mode: f.mode, floors: f.floors, plats: f.plats, gears: f.gears, top: f.top, coins: f.coins, gone: new Set(), t: 0, time: f.time, roundTime: f.roundTime, phase: "countdown", countdown: 3, events: [], lava: -200, lavaOn: f.lavaOn, finished: 0, lastCall: false, results: null });
     w.players.forEach((p, i) => { p.slot = i; });
     if (opts.bots) w.players.forEach(p => { if (p.bot) assignBot(p, opts.bots); });
     const order = [...w.players].sort(() => Math.random() - 0.5); const used = new Set();
@@ -154,6 +158,7 @@ window.Sim = (() => {
     }
     if (wasGround && !p.ground) p.coyote = T_.coyote;
     if (p.y < -40 || (w.lavaOn && p.y < w.lava - 6)) die(w, p);
+    else for (const g of w.gears) { const gx = gearX(g, w.t); if (Math.abs(g.y - (p.y + PH / 2)) < g.r + PH / 2 - 2 && Math.abs(gx - (p.x + PW / 2)) < g.r + PW / 2 - 2) { die(w, p); break; } }
     p.best = Math.max(p.best, p.y);
     if (w.coins.length && !w.client) for (let i = w.coins.length - 1; i >= 0; i--) { const c = w.coins[i]; if (Math.abs(c.x - (p.x + PW / 2)) < 14 && Math.abs(c.y - (p.y + PH / 2)) < 16) { w.coins.splice(i, 1); p.score++; w.events.push({ t: "coin", id: p.id, x: c.x, y: c.y }); } }
   }
@@ -228,6 +233,8 @@ window.Sim = (() => {
     if (gap <= 0) { if (Math.abs(dx) < 6) { p.input.jump = true; p.input.jumpHeld = false; } return; }   // cíl níž: seskočit
     const reach = flightReach(gap) * (0.6 + sk * 0.3);
     const atEdge = (dx > 0 && p.x >= platEdge(w, p, 1) - 1) || (dx < 0 && p.x <= platEdge(w, p, -1) + 1);
+    const gearNear = w.gears.some(g => g.y > p.y - 10 && g.y < tg.y + 30 && Math.abs(gearX(g, w.t) - (p.x + PW / 2 + dx / 2)) < g.r + 34 + (1 - sk) * -20);
+    if (gearNear && sk > 0.3) { p.input.jumpHeld = false; return; }
     if (ai.groundT >= react && (Math.abs(dx) < 8 || (atEdge && Math.abs(dx) < reach)) && Math.random() < 0.15 + sk * 0.85) { p.input.jump = true; p.input.jumpHeld = true; ai.holdT = 0.5 - (1 - sk) * Math.random() * 0.3; }
     else if (sk < 0.5 && atEdge && Math.random() < 0.02 * (1 - sk)) { p.input.jump = true; p.input.jumpHeld = true; ai.holdT = 0.2; }   // noob občas skočí naslepo
     else p.input.jumpHeld = false;
@@ -265,5 +272,5 @@ window.Sim = (() => {
   const skillTier = (s) => s < 0.4 ? "easy" : s < 0.75 ? "mid" : "hard";
   const palette = (w) => w.players.map(p => COLORS[p.ci]);
 
-  return { W, PW, PH, COLORS, TEAM_COLORS, MODES, HEIGHTS, PU_RATE, BOT_SKILL, POWERUPS: {}, create, addPlayer, removePlayer, resetRound, step, movePlayer, results, packPlayers, lobbyInfo, colorOf, assignBot, skillTier, palette, platX };
+  return { W, PW, PH, COLORS, TEAM_COLORS, MODES, HEIGHTS, PU_RATE, BOT_SKILL, POWERUPS: {}, create, addPlayer, removePlayer, resetRound, step, movePlayer, results, packPlayers, lobbyInfo, colorOf, assignBot, skillTier, palette, platX, gearX };
 })();

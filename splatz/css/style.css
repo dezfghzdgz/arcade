@@ -131,3 +131,6 @@ input:focus { outline: none; border-color: var(--aqua); }
 .mission .m-bar i { display: block; height: 100%; background: var(--aqua); border-radius: 4px; }
 .mission .m-prog { font-size: 12px; color: var(--ink-dim); margin-top: 3px; }
 .hud-mode { position: absolute; top: max(48px, calc(env(safe-area-inset-top) + 40px)); left: 12px; font-size: 11px; font-weight: 800; color: rgba(255,255,255,.7); }
+
+.hub-link { position: absolute; top: max(14px, env(safe-area-inset-top)); left: 16px; color: var(--ink-dim); text-decoration: none; font-weight: 800; font-size: 14px; padding: 6px 10px; border-radius: 999px; background: rgba(255,255,255,.06); }
+.hub-link:hover { color: #fff; }

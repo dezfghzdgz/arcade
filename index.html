@@ -6,78 +6,87 @@
   <meta name="theme-color" content="#160B2E" />
   <meta name="description" content="Quick games for your phone or a bored moment at school. Solo or with friends over one link." />
   <title>Arcade</title>
-  <link rel="icon" href="icon-192.png" />
-  <link rel="apple-touch-icon" href="icon-192.png" />
-  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icon-192.png" /><link rel="apple-touch-icon" href="icon-192.png" /><link rel="manifest" href="manifest.webmanifest" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;900&display=swap" rel="stylesheet" />
-  <style>
-    :root { --bg: #160B2E; --bg2: #24124A; --ink: #F7F1FF; --dim: #B9A8D9; --coral: #FF5E7E; --aqua: #5EE1D0; --amber: #FFCF5A; }
-    * { box-sizing: border-box; }
-    body { margin: 0; min-height: 100dvh; background: radial-gradient(1200px 600px at 50% -10%, #2B1150, var(--bg)); color: var(--ink); font-family: "Nunito", system-ui, sans-serif; display: flex; flex-direction: column; align-items: center; padding: 28px 20px 40px; }
-    h1 { font-size: 64px; font-weight: 900; letter-spacing: -2px; margin: 12px 0 4px; text-shadow: 4px 4px 0 var(--coral), 8px 8px 0 var(--aqua); }
-    .sub { color: var(--dim); margin: 0 0 28px; font-weight: 700; text-align: center; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; width: 100%; max-width: 720px; }
-    .card { display: block; text-decoration: none; color: inherit; background: var(--bg2); border-radius: 22px; padding: 20px; border: 2px solid rgba(255,255,255,.08); transition: transform .12s ease, border-color .12s ease; }
-    .card:hover { transform: translateY(-3px); border-color: rgba(255,255,255,.25); }
-    .card .tag { display: inline-block; font-size: 12px; font-weight: 900; letter-spacing: .5px; padding: 4px 10px; border-radius: 999px; margin-bottom: 10px; }
-    .solo .tag { background: var(--amber); color: #2A1600; } .friends .tag { background: var(--aqua); color: #062522; } .soon .tag { background: rgba(255,255,255,.12); color: var(--dim); }
-    .card h2 { margin: 0 0 6px; font-size: 28px; font-weight: 900; }
-    .card p { margin: 0; color: var(--dim); font-weight: 700; line-height: 1.4; }
-    .card img { width: 64px; height: 64px; border-radius: 16px; float: right; margin-left: 12px; }
-    .soon { opacity: .55; pointer-events: none; }
-    .foot { margin-top: 32px; color: var(--dim); font-size: 13px; font-weight: 700; display: flex; flex-direction: column; align-items: center; gap: 14px; }
-    .kine { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; color: var(--ink); background: rgba(255,255,255,.06); border: 2px solid rgba(255,255,255,.1); border-radius: 999px; padding: 8px 16px 8px 10px; transition: border-color .12s ease; }
-    .kine:hover { border-color: rgba(255,255,255,.3); }
-    .kine b { color: var(--amber); }
-    .kine .k { width: 26px; height: 26px; border-radius: 8px; background: linear-gradient(135deg, var(--coral), var(--amber)); display: grid; place-items: center; font-weight: 900; color: #2A1600; font-size: 14px; }
-    .foot button { background: none; border: none; color: var(--dim); font: inherit; cursor: pointer; text-decoration: underline; }
-  </style>
+  <link rel="stylesheet" href="hub.css" />
 </head>
 <body>
-  <h1>Arcade</h1>
-  <p class="sub" data-i18n="sub">Quick games. Solo or with friends over one link.</p>
+  <header class="top">
+    <a class="brand" href="./">Arcade</a>
+    <nav id="nav">
+      <button id="btn-pass" class="pass hidden"></button>
+      <button id="btn-signin" data-i18n="signIn">Sign in</button>
+      <div id="user-menu" class="user hidden">
+        <button id="btn-user"><span id="user-name">…</span> ▾</button>
+        <div id="user-drop" class="drop hidden">
+          <button data-page="submit" data-i18n="submitGame">Submit a game</button>
+          <button data-page="mine" data-i18n="mySubs">My submissions</button>
+          <button id="btn-admin" class="hidden" data-page="admin" data-i18n="admin">Review queue</button>
+          <button id="btn-signout" data-i18n="signOut">Sign out</button>
+        </div>
+      </div>
+    </nav>
+  </header>
 
-  <div class="grid">
-    <a class="card solo" href="zigdash/">
-      <img src="zigdash/icon-192.png" alt="" />
-      <span class="tag" data-i18n="solo">SOLO</span>
-      <h2>ZigDash</h2>
-      <p data-i18n="zigdash">Tap, flip, dodge. One thumb, leaderboard, daily missions.</p>
-    </a>
-    <a class="card friends" href="splatz/">
-      <img src="splatz/icon-192.png" alt="" />
-      <span class="tag" data-i18n="friends">WITH FRIENDS</span>
-      <h2>Splatz</h2>
-      <p data-i18n="splatz">Paint arena for up to 8. Share a code, fill the rest with bots. 5 modes.</p>
-    </a>
-    <a class="card friends" href="tower/">
-      <img src="tower/icon-192.png" alt="" />
-      <span class="tag" data-i18n="friends">WITH FRIENDS</span>
-      <h2>Tower</h2>
-      <p data-i18n="tower">Race up the tower. Jump, springs, lava. First to the top wins.</p>
-    </a>
-    <div class="card soon">
-      <span class="tag" data-i18n="soon">COMING SOON</span>
-      <h2>???</h2>
-      <p data-i18n="next">Next game goes here.</p>
+  <main id="page-home" class="page">
+    <h1>Arcade</h1>
+    <p class="sub" data-i18n="sub">Quick games. Solo or with friends over one link.</p>
+    <div id="pass-banner" class="pass-banner hidden"></div>
+    <div id="games" class="grid"></div>
+    <h2 class="section hidden" id="community-h" data-i18n="community">From the community</h2>
+    <div id="community" class="grid"></div>
+    <div class="foot">
+      <a class="kine" id="kine-link" href="#" target="_blank" rel="noopener"><span class="k">K</span><span><span data-i18n="kine">Also by us:</span> <b>Kine</b> <span data-i18n="kineDesc">– videos, live, creators</span></span></a>
+      <button id="lang">Čeština</button>
+    </div>
+  </main>
+
+  <main id="page-submit" class="page hidden">
+    <button class="back" data-page="home">‹ Arcade</button>
+    <h2 data-i18n="submitGame">Submit a game</h2>
+    <p class="sub" data-i18n="submitHelp">Host your HTML5 game anywhere (Vercel, GitHub Pages, itch.io), paste the link. We play it, and if it fits, it appears on the Arcade with your name.</p>
+    <form id="submit-form" class="form">
+      <label><span data-i18n="fTitle">Title</span><input name="title" maxlength="40" required /></label>
+      <label><span data-i18n="fDesc">One-line description</span><input name="description" maxlength="120" required /></label>
+      <label><span data-i18n="fUrl">Play URL (https://…)</span><input name="url" type="url" required /></label>
+      <label><span data-i18n="fIcon">Icon URL (optional, square PNG)</span><input name="icon_url" type="url" /></label>
+      <label><span data-i18n="fKind">Type</span><select name="kind"><option value="solo">Solo</option><option value="friends">With friends</option></select></label>
+      <label><span data-i18n="fNote">Note for reviewers (optional)</span><textarea name="note" maxlength="500"></textarea></label>
+      <button class="big" type="submit" data-i18n="send">Send for review</button>
+    </form>
+  </main>
+
+  <main id="page-mine" class="page hidden">
+    <button class="back" data-page="home">‹ Arcade</button>
+    <h2 data-i18n="mySubs">My submissions</h2>
+    <div id="mine-list" class="list"></div>
+  </main>
+
+  <main id="page-admin" class="page hidden">
+    <button class="back" data-page="home">‹ Arcade</button>
+    <h2 data-i18n="admin">Review queue</h2>
+    <div id="admin-list" class="list"></div>
+  </main>
+
+  <div id="auth" class="modal hidden">
+    <div class="box">
+      <button class="close" id="auth-close">×</button>
+      <h3 id="auth-title" data-i18n="signIn">Sign in</h3>
+      <form id="auth-form" class="form">
+        <label id="auth-name-row" class="hidden"><span data-i18n="fName">Display name</span><input name="name" maxlength="20" /></label>
+        <label><span>E-mail</span><input name="email" type="email" required autocomplete="email" /></label>
+        <label><span data-i18n="fPass">Password</span><input name="password" type="password" minlength="6" required autocomplete="current-password" /></label>
+        <div id="auth-err" class="err"></div>
+        <button class="big" type="submit" id="auth-submit" data-i18n="signIn">Sign in</button>
+      </form>
+      <button id="auth-toggle" class="ghost"></button>
     </div>
   </div>
+  <div id="toast" class="toast hidden"></div>
 
-  <div class="foot">
-    <a class="kine" href="https://kine-lac.vercel.app" target="_blank" rel="noopener"><span class="k">K</span><span><span data-i18n="kine">Also by us:</span> <b>Kine</b> <span data-i18n="kineDesc">– videos, live, creators</span></span></a>
-    <button id="lang">Čeština</button>
-  </div>
-
-  <script>
-    const T = {
-      en: { sub: "Quick games. Solo or with friends over one link.", solo: "SOLO", friends: "WITH FRIENDS", soon: "COMING SOON", zigdash: "Tap, flip, dodge. One thumb, leaderboard, daily missions.", splatz: "Paint arena for up to 8. Share a code, fill the rest with bots. 5 modes.", next: "Next game goes here.", tower: "Race up the tower. Jump, springs, lava. First to the top wins.", lang: "Čeština", kine: "Also by us:", kineDesc: "– videos, live, creators" },
-      cs: { sub: "Rychlé hry. Sólo nebo s kamarády přes jeden odkaz.", solo: "SÓLO", friends: "S KAMARÁDY", soon: "BRZY", zigdash: "Ťukni, otoč se, uhni. Jeden palec, žebříček, denní úkoly.", splatz: "Malovací aréna až pro 8. Pošli kód, zbytek doplní boti. 5 módů.", next: "Tady bude další hra.", tower: "Závod nahoru věží. Skoky, pružiny, láva. První na vrcholu vyhrává.", lang: "English", kine: "Také od nás:", kineDesc: "– videa, živě, tvůrci" },
-    };
-    let lang = localStorage.getItem("arcade_lang") || "en";
-    const apply = () => { document.documentElement.lang = lang; document.querySelectorAll("[data-i18n]").forEach(el => el.textContent = T[lang][el.dataset.i18n]); document.getElementById("lang").textContent = T[lang].lang; };
-    document.getElementById("lang").onclick = () => { lang = lang === "en" ? "cs" : "en"; localStorage.setItem("arcade_lang", lang); apply(); };
-    apply();
-  </script>
+  <script src="config.js"></script>
+  <script>if (HUB_CONFIG.supabaseUrl) { const s = document.createElement("script"); s.src = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"; s.async = false; document.head.appendChild(s); }</script>
+  <script src="hub.js"></script>
 </body>
 </html>

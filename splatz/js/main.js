@@ -124,7 +124,7 @@
   $("btn-copy").onclick = async () => { try { await navigator.clipboard.writeText(Net.roomLink(lobby.code)); toast(Lang("copied")); } catch { toast(Net.roomLink(lobby.code), 4000); } };
   $("btn-share-room").onclick = async () => { const url = Net.roomLink(lobby.code); try { if (navigator.share) await navigator.share({ text: Lang("shareRoom", lobby.code) + url }); else { await navigator.clipboard.writeText(url); toast(Lang("copied")); } } catch {} };
   $("btn-leave").onclick = () => leaveToMenu();
-  function leaveToMenu() { hostLoopStop(); clearInterval(clientTimer); Net.close(); role = null; world = null; cw = null; view = null; phase = "menu"; refreshMenu(); show("menu"); }
+  function leaveToMenu() { hostLoopStop(); if (clientTimer) clientTimer.stop(); clientTimer = null; Net.close(); role = null; world = null; cw = null; view = null; phase = "menu"; refreshMenu(); show("menu"); }
 
   // ---------- kolo (solo/host)
   function startRound() {
@@ -138,7 +138,7 @@
   }
   function hostLoopStart() {
     hostLoopStop(); let last = performance.now();
-    hostTimer = setInterval(() => {
+    hostTimer = Net.workerInterval(() => {
       const now = performance.now(), dt = Math.min(0.1, (now - last) / 1000); last = now;
       const mp = world.players.find(p => p.id === Net.myId);
       if (mp) { mp.input.dx = input.dx; mp.input.dy = input.dy; if (input.dash) mp.input.dash = true; input.dash = false; }
@@ -153,7 +153,7 @@
       if (world.phase === "end" && phase === "game") endRound(world.results);
     }, 1000 / T.tickRate);
   }
-  function hostLoopStop() { clearInterval(hostTimer); hostTimer = null; }
+  function hostLoopStop() { if (hostTimer) hostTimer.stop(); hostTimer = null; }
   function objPayload() { const o = world.objective; if (!o) return null; const h = o.holder && world.players.find(p => p.id === o.holder); return { kind: o.kind, x: o.x, y: o.y, r: o.r, contested: !!o.contested, holderColor: h ? Sim.colorOf(world, h) : null }; }
   function snapPayload(d, ev) { return { p: Sim.packPlayers(world), d, t: Math.round(world.time * 10) / 10, ph: world.phase, cd: world.countdown, pu: world.powerups, ev, obj: objPayload(), pr: world.projectiles.map(pr => { const o = world.players.find(p => p.slot === pr.owner); return { x: pr.x, y: pr.y, color: o ? Sim.colorOf(world, o) : "#000" }; }) }; }
   function sendFull(to) { Net.send("full", Object.assign(snapPayload([], []), { paint: Sim.packPaint(world), seed: world.seed, mode: world.mode, seconds: world.roundSeconds, opts: lobby.opts, players: lobby.players }), to); }
@@ -217,8 +217,8 @@
     if (p.ev && p.ev.length) handleEvents(p.ev);
   }
   function clientLoopStart() {
-    clearInterval(clientTimer); let last = performance.now();
-    clientTimer = setInterval(() => {
+    if (clientTimer) clientTimer.stop(); let last = performance.now();
+    clientTimer = Net.workerInterval(() => {
       const now = performance.now(), dt = Math.min(0.1, (now - last) / 1000); last = now;
       const m = cw.players[0];
       m.input.dx = input.dx; m.input.dy = input.dy;
@@ -246,7 +246,7 @@
       else if (e.t === "splash") { Render.burst(e.x, e.y, e.color, 10, 140); }
       else if (e.t === "bump") { Render.kick(e.victim === Net.myId ? 1 : 0.4); Render.burst(e.x, e.y, "#fff", 10, 160); Audio2.bump(); if (e.victim === Net.myId) { Audio2.stunned(); vibrate([30, 30, 60]); } }
       else if (e.t === "ko") { if (e.by === Net.myId) runStats.kos++; Render.popup(e.x, e.y - 20, Lang("ko", nameOf(e.by), nameOf(e.victim)), "#2B2440"); if (e.by === Net.myId) Audio2.pickup(); }
-      else if (e.t === "bomb") { Render.ring(e.x, e.y, e.color, T.bombRadius + 6); Render.burst(e.x, e.y, e.color, 24, 220); Render.kick(0.7); Audio2.bomb(); if (mine) { runStats.powerups++; vibrate(20); Render.popup(e.x, e.y - 26, Lang("bombAura"), "#2B2440"); } }
+      else if (e.t === "bomb") { Render.ring(e.x, e.y, e.color, e.r + 8); Render.ring(e.x, e.y, "#fff", e.r * 0.6); Render.burst(e.x, e.y, e.color, 40, 300); Render.kick(1.2); Audio2.bomb(); vibrate([40, 30, 60]); }
       else if (e.t === "pickup") { if (mine) { runStats.powerups++; Audio2.pickup(); vibrate(15); const m = myPos(); if (m) Render.popup(m.x, m.y - 26, Lang.ability(e.kind), "#2B2440"); } }
       else if (e.t === "freeze") { Render.ring(e.x, e.y, "#6FC3FF", 110); Render.burst(e.x, e.y, "#9ED8FF", 20, 200); Audio2.bomb(); }
       else if (e.t === "shieldpop") { if (e.x) Render.burst(e.x, e.y, "#5EE1D0", 14, 160); Audio2.bump(); }
@@ -275,8 +275,8 @@
       const players = [];
       lobby.players.forEach((lp, slot) => {
         const color = cw.teams ? Sim.TEAM_COLORS[slot % 2] : Sim.COLORS[lp.ci];
-        if (lp.id === Net.myId) { const m = cw.players[0]; players.push({ x: m.x, y: m.y, dir: m.dir, color, name: lp.name, hat: lp.hat, pattern: lp.pattern, stun: m.stun > 0, dash: m.dash > 0, boost: m.speedBoost > 0, shield: m.shield, giant: m.giant > 0, gun: m.gun, dead: m.dead > 0, frozen: m.frozen > 0, bomb: m.bomb > 0, frenzy: m.frenzy > 0, me: true, meLabel: meLabel(), dashCd: m.dashCd / T.dashCooldown }); }
-        else { const r = remote.get(lp.id); if (!r) return; players.push({ x: r.dx, y: r.dy, dir: r.dir, color, name: lp.name, hat: lp.hat, pattern: lp.pattern, stun: r.stun, dash: r.dash, boost: r.boost, shield: r.shield, giant: r.giant, gun: r.gun, dead: r.dead, frozen: r.frozen, bomb: r.bomb, frenzy: r.frenzy }); }
+        if (lp.id === Net.myId) { const m = cw.players[0]; players.push({ x: m.x, y: m.y, dir: m.dir, color, name: lp.name, hat: lp.hat, pattern: lp.pattern, stun: m.stun > 0, dash: m.dash > 0, boost: m.speedBoost > 0, shield: m.shield, giant: m.giant > 0, gun: m.gun, dead: m.dead > 0, frozen: m.frozen > 0, bomb: m.bomb > 0, bombT: m.bomb / 5, frenzy: m.frenzy > 0, me: true, meLabel: meLabel(), dashCd: m.dashCd / T.dashCooldown }); }
+        else { const r = remote.get(lp.id); if (!r) return; players.push({ x: r.dx, y: r.dy, dir: r.dir, color, name: lp.name, hat: lp.hat, pattern: lp.pattern, stun: r.stun, dash: r.dash, boost: r.boost, shield: r.shield, giant: r.giant, gun: r.gun, dead: r.dead, frozen: r.frozen, bomb: r.bomb, bombT: 0.5, frenzy: r.frenzy }); }
       });
       view.players = players; view.showMe = showMe;
       return view;
@@ -284,7 +284,7 @@
     return {
       obstacles: world.obstacles, powerups: world.powerups, time: world.time, phase: world.phase, countdown: world.countdown, showMe, objective: objPayload(),
       projectiles: world.projectiles.map(pr => { const o = world.players.find(p => p.slot === pr.owner); return { x: pr.x, y: pr.y, color: o ? Sim.colorOf(world, o) : "#000" }; }),
-      players: world.players.map(p => ({ x: p.x, y: p.y, dir: p.dir, color: Sim.colorOf(world, p), name: p.name, hat: p.hat, pattern: p.pattern, stun: p.stun > 0, dash: p.dash > 0, boost: p.speedBoost > 0, shield: p.shield, giant: p.giant > 0, gun: p.gun, dead: p.dead > 0, frozen: p.frozen > 0 && p.stun > 0, bomb: p.bomb > 0, frenzy: p.frenzy > 0, me: p.id === Net.myId, meLabel: meLabel(), dashCd: p.dashCd / T.dashCooldown })),
+      players: world.players.map(p => ({ x: p.x, y: p.y, dir: p.dir, color: Sim.colorOf(world, p), name: p.name, hat: p.hat, pattern: p.pattern, stun: p.stun > 0, dash: p.dash > 0, boost: p.speedBoost > 0, shield: p.shield, giant: p.giant > 0, gun: p.gun, dead: p.dead > 0, frozen: p.frozen > 0 && p.stun > 0, bomb: p.bomb > 0, bombT: p.bomb / 5, frenzy: p.frenzy > 0, me: p.id === Net.myId, meLabel: meLabel(), dashCd: p.dashCd / T.dashCooldown })),
     };
   }
   let lastFrame = performance.now(), barsAcc = 0;
@@ -382,6 +382,7 @@
   document.querySelectorAll(".iap").forEach(b => b.onclick = async () => { const ok = await Monetization.purchase(b.dataset.iap); if (ok) { toast(Lang("done")); openShop(); } });
   $("btn-restore").onclick = async () => { const ok = await Monetization.restore(); toast(ok ? Lang("restored") : Lang("nothingToRestore")); };
 
+  window.__dbg = () => ({ world, cw, lobby, phase });
   // ---------- start
   Render.init($("game")); Lang.apply(); refreshMenu(); show("menu"); requestAnimationFrame(frame);
   Monetization.init().then(async () => { const g = await Monetization.claimWebPurchases(); if (g.length) { toast(Lang("purchaseActive")); refreshMenu(); } });

@@ -137,3 +137,6 @@ input:focus { outline: none; border-color: var(--aqua); }
 .dash { user-select: none; -webkit-user-select: none; touch-action: none; }
 
 .spec-leave { position: absolute; top: max(80px, calc(env(safe-area-inset-top) + 72px)); left: 50%; transform: translateX(-50%); pointer-events: auto; font-size: 14px; padding: 8px 18px; }
+
+.hub-link { position: absolute; top: max(14px, env(safe-area-inset-top)); left: 16px; color: var(--ink-dim); text-decoration: none; font-weight: 800; font-size: 14px; padding: 6px 10px; border-radius: 999px; background: rgba(255,255,255,.06); }
+.hub-link:hover { color: #fff; }

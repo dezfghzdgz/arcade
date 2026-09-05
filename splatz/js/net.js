@@ -52,8 +52,21 @@ window.Net = (() => {
   function close() { if (tr) { tr.close(); tr = null; } code = null; }
   function send(type, payload, to) { if (tr) tr.send(to || null, type, payload); }
 
+  // Časovač ve Web Workeru: prohlížeč ho na pozadí neškrtí tak agresivně jako setInterval stránky,
+  // takže hostitel nezastaví hru všem, když si přepne záložku.
+  function workerInterval(fn, ms) {
+    let handle;
+    try {
+      const blob = new Blob([`let t=null;onmessage=e=>{if(e.data.ms){clearInterval(t);t=setInterval(()=>postMessage(1),e.data.ms)}else{clearInterval(t)}}`], { type: "text/javascript" });
+      const wk = new Worker(URL.createObjectURL(blob));
+      wk.onmessage = fn; wk.postMessage({ ms });
+      handle = { stop() { wk.postMessage({}); wk.terminate(); } };
+    } catch { const id = setInterval(fn, ms); handle = { stop() { clearInterval(id); } }; }
+    return handle;
+  }
+
   return {
-    myId, makeCode, online, open, close, send, on,
+    myId, makeCode, online, open, close, send, on, workerInterval,
     get code() { return code; }, get isHost() { return isHost; }, get connected() { return !!tr; }, get kind() { return tr ? tr.kind : null; },
     roomLink(c) { const base = cfg.webUrl || (location.origin + location.pathname); return base + "?room=" + c; },
   };

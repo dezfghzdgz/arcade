@@ -1,0 +1,140 @@
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const C = HUB_CONFIG;
+  const T = {
+    en: { sub: "Quick games. Solo or with friends over one link.", solo: "SOLO", friends: "WITH FRIENDS", community: "From the community", signIn: "Sign in", signUp: "Create account", signOut: "Sign out",
+      submitGame: "Submit a game", mySubs: "My submissions", admin: "Review queue", kine: "Also by us:", kineDesc: "– videos, live, creators", lang: "Čeština",
+      submitHelp: "Host your HTML5 game anywhere (Vercel, GitHub Pages, itch.io), paste the link. We play it, and if it fits, it appears on the Arcade with your name.",
+      fTitle: "Title", fDesc: "One-line description", fUrl: "Play URL (https://…)", fIcon: "Icon URL (optional, square PNG)", fKind: "Type", fNote: "Note for reviewers (optional)", fName: "Display name", fPass: "Password", send: "Send for review",
+      needLogin: "Sign in first.", sent: "Sent! We'll review it soon.", noSupabase: "Accounts aren't set up yet (see README).", toggleUp: "No account? Create one", toggleIn: "Have an account? Sign in",
+      pending: "pending", approved: "approved", rejected: "rejected", approve: "Approve", reject: "Reject", by: (n) => `by ${n}`, empty: "Nothing here yet.",
+      pass: "Arcade Pass", passDesc: (p) => `No ads in every game · ${p}/month`, passActive: (d) => `Arcade Pass active until ${d}`, getPass: "Get Arcade Pass", passNeedLogin: "Sign in to get the pass.",
+      zigdash: "Tap, flip, dodge. One thumb, leaderboard, daily missions.", splatz: "Paint arena for up to 8. Share a code, fill the rest with bots. 5 modes.", tower: "Race up the tower. Jump, springs, gears, lava. First to the top wins.", checkEmail: "Check your e-mail to confirm the account, then sign in." },
+    cs: { sub: "Rychlé hry. Sólo nebo s kamarády přes jeden odkaz.", solo: "SÓLO", friends: "S KAMARÁDY", community: "Od komunity", signIn: "Přihlásit", signUp: "Založit účet", signOut: "Odhlásit",
+      submitGame: "Poslat hru", mySubs: "Moje hry", admin: "Ke schválení", kine: "Také od nás:", kineDesc: "– videa, živě, tvůrci", lang: "English",
+      submitHelp: "Svou HTML5 hru si hostuj kdekoliv (Vercel, GitHub Pages, itch.io) a vlož odkaz. Zahrajeme si ji, a když sedne, objeví se na Arcade s tvým jménem.",
+      fTitle: "Název", fDesc: "Popis na jeden řádek", fUrl: "Odkaz na hru (https://…)", fIcon: "Odkaz na ikonu (nepovinné, čtvercové PNG)", fKind: "Typ", fNote: "Poznámka pro nás (nepovinné)", fName: "Zobrazované jméno", fPass: "Heslo", send: "Odeslat ke schválení",
+      needLogin: "Nejdřív se přihlas.", sent: "Odesláno! Brzy se na to podíváme.", noSupabase: "Účty ještě nejsou zapojené (viz README).", toggleUp: "Nemáš účet? Založ si ho", toggleIn: "Máš účet? Přihlas se",
+      pending: "čeká", approved: "schváleno", rejected: "zamítnuto", approve: "Schválit", reject: "Zamítnout", by: (n) => `od ${n}`, empty: "Zatím nic.",
+      pass: "Arcade Pass", passDesc: (p) => `Bez reklam ve všech hrách · ${p}/měsíc`, passActive: (d) => `Arcade Pass aktivní do ${d}`, getPass: "Pořídit Arcade Pass", passNeedLogin: "Na pass se musíš přihlásit.",
+      zigdash: "Ťukni, otoč se, uhni. Jeden palec, žebříček, denní úkoly.", splatz: "Malovací aréna až pro 8. Pošli kód, zbytek doplní boti. 5 módů.", tower: "Závod nahoru věží. Skoky, pružiny, ozubená kola, láva.", checkEmail: "Potvrď účet v e-mailu a pak se přihlas." },
+  };
+  let lang = localStorage.getItem("arcade_lang") || "en";
+  const L = (k, ...a) => { const v = T[lang][k] ?? T.en[k] ?? k; return typeof v === "function" ? v(...a) : v; };
+  const BUILTIN = [
+    { slug: "zigdash", title: "ZigDash", kind: "solo", url: "zigdash/", icon: "zigdash/icon-192.png" },
+    { slug: "splatz", title: "Splatz", kind: "friends", url: "splatz/", icon: "splatz/icon-192.png" },
+    { slug: "tower", title: "Tower", kind: "friends", url: "tower/", icon: "tower/icon-192.png" },
+  ];
+
+  const sb = C.supabaseUrl && window.supabase ? supabase.createClient(C.supabaseUrl, C.supabaseAnonKey) : null;
+  let user = null, profile = null;
+
+  const toast = (m, ms = 2200) => { const el = $("toast"); el.textContent = m; el.classList.remove("hidden"); clearTimeout(el._t); el._t = setTimeout(() => el.classList.add("hidden"), ms); };
+  function applyLang() {
+    document.documentElement.lang = lang;
+    document.querySelectorAll("[data-i18n]").forEach(el => el.textContent = L(el.dataset.i18n));
+    $("lang").textContent = L("lang");
+    renderGames(); renderPass(); updateAuthUI();
+  }
+  $("lang").onclick = () => { lang = lang === "en" ? "cs" : "en"; localStorage.setItem("arcade_lang", lang); applyLang(); };
+  $("kine-link").href = C.kineUrl;
+
+  // ---------- stránky
+  function showPage(id) { document.querySelectorAll(".page").forEach(p => p.classList.toggle("hidden", p.id !== "page-" + id)); $("user-drop").classList.add("hidden"); window.scrollTo(0, 0); if (id === "mine") loadMine(); if (id === "admin") loadAdmin(); }
+  document.querySelectorAll("[data-page]").forEach(b => b.onclick = () => { if (b.dataset.page !== "home" && !user) { openAuth(); return; } showPage(b.dataset.page); });
+
+  // ---------- hry
+  function card(g, community) {
+    const a = document.createElement("a"); a.className = "card " + (g.kind === "solo" ? "solo" : "friends"); a.href = g.url; if (community) { a.target = "_blank"; a.rel = "noopener"; }
+    const img = g.icon || g.icon_url; 
+    a.innerHTML = `${img ? `<img src="${img}" alt="" onerror="this.remove()" />` : ""}<span class="tag">${g.kind === "solo" ? L("solo") : L("friends")}</span><h3></h3><p></p>${community ? `<small></small>` : ""}`;
+    a.querySelector("h3").textContent = g.title; a.querySelector("p").textContent = community ? g.description : L(g.slug);
+    if (community) a.querySelector("small").textContent = L("by", g.author || "?");
+    return a;
+  }
+  async function renderGames() {
+    const grid = $("games"); grid.innerHTML = ""; BUILTIN.forEach(g => grid.appendChild(card(g, false)));
+    if (!sb) return;
+    const { data } = await sb.from("games").select("*").order("created_at", { ascending: false });
+    const cg = $("community"); cg.innerHTML = "";
+    $("community-h").classList.toggle("hidden", !data || !data.length);
+    (data || []).forEach(g => cg.appendChild(card(g, true)));
+  }
+
+  // ---------- auth
+  let signup = false;
+  function openAuth() { if (!sb) { toast(L("noSupabase"), 3000); return; } signup = false; renderAuth(); $("auth").classList.remove("hidden"); }
+  function renderAuth() { $("auth-title").textContent = L(signup ? "signUp" : "signIn"); $("auth-submit").textContent = L(signup ? "signUp" : "signIn"); $("auth-toggle").textContent = L(signup ? "toggleIn" : "toggleUp"); $("auth-name-row").classList.toggle("hidden", !signup); $("auth-err").textContent = ""; }
+  $("btn-signin").onclick = openAuth; $("auth-close").onclick = () => $("auth").classList.add("hidden"); $("auth-toggle").onclick = () => { signup = !signup; renderAuth(); };
+  $("auth-form").onsubmit = async (e) => {
+    e.preventDefault(); const f = new FormData(e.target); $("auth-err").textContent = "";
+    const email = f.get("email"), password = f.get("password");
+    const r = signup ? await sb.auth.signUp({ email, password, options: { data: { name: (f.get("name") || "").trim().slice(0, 20) || email.split("@")[0] } } }) : await sb.auth.signInWithPassword({ email, password });
+    if (r.error) { $("auth-err").textContent = r.error.message; return; }
+    if (signup && !r.data.session) { toast(L("checkEmail"), 5000); $("auth").classList.add("hidden"); return; }
+    $("auth").classList.add("hidden");
+  };
+  $("btn-user").onclick = () => $("user-drop").classList.toggle("hidden");
+  $("btn-signout").onclick = async () => { await sb.auth.signOut(); $("user-drop").classList.add("hidden"); showPage("home"); };
+  async function setUser(u) {
+    user = u; profile = null;
+    if (u) { const { data } = await sb.from("profiles").select("*").eq("id", u.id).single(); profile = data; }
+    updateAuthUI(); renderPass(); handlePaidReturn();
+  }
+  function updateAuthUI() {
+    $("btn-signin").classList.toggle("hidden", !!user); $("user-menu").classList.toggle("hidden", !user);
+    if (user) $("user-name").textContent = (profile && profile.name) || user.user_metadata?.name || user.email;
+    $("btn-admin").classList.toggle("hidden", !(profile && profile.is_admin));
+  }
+  if (sb) { sb.auth.getSession().then(({ data }) => setUser(data.session?.user || null)); sb.auth.onAuthStateChange((_, s) => setUser(s?.user || null)); }
+
+  // ---------- Arcade Pass
+  const passActive = () => profile && profile.pass_until && new Date(profile.pass_until) > new Date();
+  function renderPass() {
+    const b = $("pass-banner"), btn = $("btn-pass");
+    if (!sb || !C.stripePassLink) { b.classList.add("hidden"); btn.classList.add("hidden"); return; }
+    btn.classList.remove("hidden"); btn.textContent = passActive() ? "★ " + L("pass") : L("pass");
+    b.classList.remove("hidden");
+    b.innerHTML = passActive() ? `<span>★ ${L("passActive", new Date(profile.pass_until).toLocaleDateString())}</span>` : `<span><b>${L("pass")}</b> · ${L("passDesc", C.passPrice)}</span><button class="pass" id="btn-get-pass">${L("getPass")}</button>`;
+    const g = $("btn-get-pass"); if (g) g.onclick = buyPass;
+    btn.onclick = buyPass;
+  }
+  function buyPass() {
+    if (passActive()) return;
+    if (!user) { toast(L("passNeedLogin")); openAuth(); return; }
+    const u = new URL(C.stripePassLink); u.searchParams.set("client_reference_id", user.id); if (user.email) u.searchParams.set("prefilled_email", user.email);
+    location.href = u.toString();
+  }
+  async function handlePaidReturn() {
+    if (!new URLSearchParams(location.search).get("paid") || !user) return;
+    history.replaceState(null, "", location.pathname);
+    for (let i = 0; i < 6; i++) { const { data } = await sb.from("profiles").select("*").eq("id", user.id).single(); profile = data; if (passActive()) { renderPass(); toast("★ " + L("pass")); return; } await new Promise(r => setTimeout(r, 1500)); }
+  }
+
+  // ---------- odeslání hry
+  $("submit-form").onsubmit = async (e) => {
+    e.preventDefault(); if (!user) { openAuth(); return; }
+    const f = new FormData(e.target);
+    const { error } = await sb.from("submissions").insert({ user_id: user.id, title: f.get("title"), description: f.get("description"), url: f.get("url"), icon_url: f.get("icon_url") || null, kind: f.get("kind"), note: f.get("note") || null });
+    if (error) { toast(error.message, 4000); return; }
+    e.target.reset(); toast(L("sent"), 3000); showPage("mine");
+  };
+  async function loadMine() {
+    const { data } = await sb.from("submissions").select("*").eq("user_id", user.id).order("created_at", { ascending: false });
+    $("mine-list").innerHTML = (data || []).map(s => `<div class="row"><div class="h"><span>${esc(s.title)}</span><span class="st ${s.status}">${L(s.status)}</span></div><div>${esc(s.description)}</div><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.url)}</a>${s.review_note ? `<div class="err">${esc(s.review_note)}</div>` : ""}</div>`).join("") || `<p class="sub">${L("empty")}</p>`;
+  }
+  async function loadAdmin() {
+    const { data } = await sb.from("submissions").select("*, profiles(name)").eq("status", "pending").order("created_at");
+    $("admin-list").innerHTML = (data || []).map(s => `<div class="row" data-id="${s.id}"><div class="h"><span>${esc(s.title)} <small>${L("by", esc(s.profiles?.name || "?"))}</small></span><span class="st">${s.kind}</span></div><div>${esc(s.description)}</div><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.url)}</a>${s.note ? `<div class="sub" style="margin:0;text-align:left">${esc(s.note)}</div>` : ""}<input placeholder="note (optional)" class="rn" /><div class="acts"><button class="pass" data-act="approved">${L("approve")}</button><button data-act="rejected">${L("reject")}</button></div></div>`).join("") || `<p class="sub">${L("empty")}</p>`;
+    $("admin-list").querySelectorAll("[data-act]").forEach(b => b.onclick = async () => {
+      const row = b.closest(".row"), id = row.dataset.id, note = row.querySelector(".rn").value;
+      const { error } = await sb.rpc("review_submission", { p_id: id, p_status: b.dataset.act, p_note: note || null });
+      if (error) { toast(error.message, 4000); return; }
+      loadAdmin(); renderGames();
+    });
+  }
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+  applyLang();
+})();

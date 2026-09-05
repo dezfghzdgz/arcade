@@ -85,6 +85,18 @@ window.Render = (() => {
       if (p.kind === "spike") { ctx.fillStyle = "#FF5E7E"; for (let i = 0; i < p.sw; i += 8) { ctx.beginPath(); ctx.moveTo(p.sx + i, y); ctx.lineTo(p.sx + i + 4, y - 9); ctx.lineTo(p.sx + i + 8, y); ctx.fill(); } }
       if (p.kind === "check") { ctx.fillStyle = "#5EE1D0"; ctx.fillRect(x + p.w / 2 - 1, y - 22, 2, 22); ctx.fillStyle = "#FF5E7E"; ctx.beginPath(); ctx.moveTo(x + p.w / 2 + 1, y - 22); ctx.lineTo(x + p.w / 2 + 14, y - 17); ctx.lineTo(x + p.w / 2 + 1, y - 12); ctx.fill(); ctx.fillStyle = "rgba(255,255,255,.6)"; ctx.font = "800 9px Nunito, sans-serif"; ctx.textAlign = "left"; ctx.fillText(p.i + "F", x + 4, y - 3); }
     }
+    // ozubená kola
+    for (const g of view.gears || []) {
+      const y = sy(g.y); if (y < -30 || y > H + 30) continue;
+      const x = Sim.gearX(g, view.t);
+      ctx.save(); ctx.translate(x, y); ctx.rotate(t * 5);
+      ctx.fillStyle = "#D6D2E0"; ctx.beginPath();
+      for (let i = 0; i < 16; i++) { const a = i * Math.PI / 8, rr = i % 2 ? g.r * 0.72 : g.r; i ? ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr) : ctx.moveTo(rr, 0); }
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "#2B2440"; ctx.beginPath(); ctx.arc(0, 0, g.r * 0.3, 0, 6.28); ctx.fill();
+      ctx.strokeStyle = "#FF5E7E"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 0, g.r * 0.5, 0, 6.28); ctx.stroke();
+      ctx.restore();
+    }
     // mince
     for (const c of view.coins || []) { const y = sy(c.y); if (y < -10 || y > H + 10) continue; const sq = 0.7 + Math.abs(Math.sin(t * 4 + c.id)) * 0.3; ctx.fillStyle = "#FFCF5A"; ctx.beginPath(); ctx.ellipse(c.x, y, 5 * sq, 5, 0, 0, 6.28); ctx.fill(); ctx.fillStyle = "#C48F14"; ctx.beginPath(); ctx.ellipse(c.x, y, 3 * sq, 3, 0, 0, 6.28); ctx.fill(); }
     // kruhy

@@ -166,6 +166,7 @@ window.Sim = (() => {
 
   function movePlayer(w, p, dt) {
     p.dashCd = Math.max(0, p.dashCd - dt); p.stun = Math.max(0, p.stun - dt); p.frozen = Math.max(0, (p.frozen || 0) - dt); p.speedBoost = Math.max(0, p.speedBoost - dt); p.giant = Math.max(0, p.giant - dt);
+    if (p.bomb > 0 && p.bomb - dt <= 0) explode(w, p);
     p.bomb = Math.max(0, p.bomb - dt); p.frenzy = Math.max(0, p.frenzy - dt);
     if (p.frenzy > 0) p.dashCd = 0;
     const owner = ownerAt(w, p.x, p.y), me = ownerOf(w, p);
@@ -196,7 +197,6 @@ window.Sim = (() => {
     p.x = blocked(w, nx, p.y) ? p.x : nx;
     p.y = blocked(w, p.x, ny) ? p.y : ny;
     if (p.stun <= 0) paintCircle(w, p.x, p.y, (p.dash > 0 ? T.paintRadius * 1.3 : T.paintRadius) * (p.giant > 0 ? 2 : 1), me);
-    if (p.bomb > 0) paintCircle(w, p.x, p.y, T.bombRadius, me);   // bomba = 5 s aura, která přebarvuje všechno kolem
 
     for (let i = w.powerups.length - 1; i >= 0; i--) {
       const pu = w.powerups[i];
@@ -207,7 +207,7 @@ window.Sim = (() => {
   function applyPowerup(w, p, kind) {
     const me = ownerOf(w, p);
     p.powerups = (p.powerups || 0) + 1;
-    if (kind === "bomb") { p.bomb = 5; w.events.push({ t: "bomb", id: p.id, x: p.x, y: p.y, color: colorOf(w, p) }); }
+    if (kind === "bomb") { p.bomb = 5; w.events.push({ t: "pickup", id: p.id, kind }); }
     else if (kind === "frenzy") { p.frenzy = 3; p.dashCd = 0; w.events.push({ t: "pickup", id: p.id, kind }); }
     else if (kind === "speed") { p.speedBoost = 5; w.events.push({ t: "pickup", id: p.id, kind }); }
     else if (kind === "shield") { p.shield = true; w.events.push({ t: "pickup", id: p.id, kind }); }
@@ -219,6 +219,12 @@ window.Sim = (() => {
     }
   }
 
+  function explode(w, p) {
+    const me = ownerOf(w, p), r = T.bombRadius * 1.6;
+    paintCircle(w, p.x, p.y, r, me);
+    for (const o of w.players) if (o !== p && o.dead <= 0 && (!w.teams || o.team !== p.team) && Math.hypot(o.x - p.x, o.y - p.y) < r + R) { if (o.shield) o.shield = false; else { o.stun = Math.max(o.stun, 1.3); const d = Math.hypot(o.x - p.x, o.y - p.y) || 1; o.vx = (o.x - p.x) / d * 300; o.vy = (o.y - p.y) / d * 300; o.dash = 0; } }
+    w.events.push({ t: "bomb", id: p.id, x: p.x, y: p.y, color: colorOf(w, p), r });
+  }
   function shoot(w, p, angle) {
     p.gun--;
     if (!w.client) w.projectiles.push({ x: p.x + Math.cos(angle) * (R + 4), y: p.y + Math.sin(angle) * (R + 4), vx: Math.cos(angle) * 420, vy: Math.sin(angle) * 420, owner: p.slot, life: 0.7 });

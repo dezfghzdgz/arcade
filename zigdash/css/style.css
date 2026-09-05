@@ -212,3 +212,6 @@ button[disabled] { opacity: .4; pointer-events: none; }
 .mission .m-bar { height: 8px; background: rgba(255,255,255,.08); border-radius: 4px; margin-top: 8px; overflow: hidden; }
 .mission .m-bar i { display: block; height: 100%; background: var(--amber); border-radius: 4px; transition: width .3s ease; }
 .mission .m-prog { font-size: 13px; color: var(--ink-dim); margin-top: 4px; }
+
+.hub-link { position: absolute; top: max(14px, env(safe-area-inset-top)); left: 16px; color: var(--ink-dim); text-decoration: none; font-weight: 800; font-size: 14px; padding: 6px 10px; border-radius: 999px; background: rgba(255,255,255,.06); }
+.hub-link:hover { color: #fff; }
