@@ -8,7 +8,8 @@ window.I18N = {
          math: "Quick math", mathHint: "First correct answer wins.", wrong: "Wrong!",
          color: "Color match", colorHint: "Tap the word whose COLOR matches the top word.",
          hold: "Hold 5 s", holdHint: "Hold the button and release at exactly 5.00 s.", holdOff: (n) => `${n} s off`,
-         count: "Count the dots", countHint: "How many dots? First correct wins." } },
+         count: "Count the dots", countHint: "How many dots? First correct wins.",
+         odd: "Odd one out", oddHint: "One is different. Find it first.", simon: "Simon", simonHint: "Watch the sequence, then repeat it.", target: "Target", targetHint: "Tap the dot 6 times as fast as you can.", stopbar: "Stop the bar", stopbarHint: "Stop the slider as close to the middle as you can.", typing: "Typing", typingHint: "Type the word. First one wins.", bigger: "Bigger?", biggerHint: "Which is bigger? Fast.", biggerQ: "Which is bigger?" } },
   cs: { tagline: "Rychlé minihry. Každý na svém mobilu. 2–8 hráčů.", yourName: "Tvoje jméno", createRoom: "Založit místnost", joinRoom: "Připojit se", lobby: "Místnost", copyLink: "Kopírovat odkaz", share: "Sdílet", copied: "Odkaz zkopírován",
     players: (n, m) => `Hráči ${n}/${m}`, start: "Start", leave: "Odejít", waitingHost: "Čekej, až hostitel odstartuje…", hostLeft: "Hostitel odešel.", notFound: "Místnost nenalezena.", connecting: "Připojuju…", roomFull: "Místnost je plná.", you: "ty", host: "host",
     needTwo: "Aspoň 2 hráči", speed: "Kola", speeds: { fast: "5", normal: "8", slow: "12" }, sound: "Zvuk", on: "zap", off: "vyp", lang: "English",
@@ -18,7 +19,8 @@ window.I18N = {
          math: "Rychlá matika", mathHint: "První správná odpověď vyhrává.", wrong: "Špatně!",
          color: "Barvy", colorHint: "Ťukni na slovo, jehož BARVA odpovídá slovu nahoře.",
          hold: "Drž 5 s", holdHint: "Drž tlačítko a pusť přesně v 5,00 s.", holdOff: (n) => `${n} s vedle`,
-         count: "Počítání teček", countHint: "Kolik je teček? První správně vyhrává." } },
+         count: "Počítání teček", countHint: "Kolik je teček? První správně vyhrává.",
+         odd: "Najdi jiný", oddHint: "Jeden je jiný. Najdi ho první.", simon: "Simon", simonHint: "Sleduj sekvenci a zopakuj ji.", target: "Terč", targetHint: "Trefit puntík 6× co nejrychleji.", stopbar: "Zastav lištu", stopbarHint: "Zastav jezdec co nejblíž středu.", typing: "Psaní", typingHint: "Napiš slovo. První vyhrává.", bigger: "Větší?", biggerHint: "Které je větší? Rychle.", biggerQ: "Které je větší?" } },
 };
 window.Lang = (() => {
   let lang = Storage.lang || "en";

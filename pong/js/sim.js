@@ -8,15 +8,17 @@ window.Sim = (() => {
   const POWERUPS = {}, PU_RATE = { none: 0 };
   const BOT_SKILL = { easy: [0.15, 0.35], mid: [0.45, 0.65], hard: [0.8, 1.0], mix: [0.15, 1.0] };
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v)), rnd = (a, b) => a + Math.random() * (b - a);
-  function create(seed, opts = {}) { const mode = MODES[opts.mode] ? opts.mode : "classic"; return { seed, mode, teams: true, obstacles: [], players: [], balls: [], score: [0, 0], paint: new Uint8Array(0), counts: new Uint16Array(9), dirty: [], events: [], time: opts.seconds || T.roundSeconds, roundSeconds: opts.seconds || T.roundSeconds, phase: "countdown", countdown: 3, serveT: 0, client: !!opts.client }; }
+  function create(seed, opts = {}) { const mode = MODES[opts.mode] ? opts.mode : "classic"; const tg = String(opts.target || "p7"); const byTime = tg[0] === "t"; const val = parseInt(tg.slice(1)) || 7; return { seed, mode, teams: true, obstacles: [], players: [], balls: [], score: [0, 0], winPoints: byTime ? 9999 : val, paint: new Uint8Array(0), counts: new Uint16Array(9), dirty: [], events: [], time: byTime ? val : 9999, roundSeconds: byTime ? val : 9999, phase: "countdown", countdown: 3, serveT: 0, client: !!opts.client }; }
   function addPlayer(w, p) { const idx = w.players.length; if (idx >= T.maxPlayers) return null; const pl = Object.assign({ x: W / 2, y: 0, w: T.paddleW, score: 0, kos: 0, hits: 0, input: { dx: 0, dy: 0, dash: false }, bot: false, hat: "none", pattern: "none", pref: -1, ai: {}, skill: 0.5, dead: 0 }, p, { slot: idx }); pl.ci = idx; pl.team = idx % 2; place(w, pl); w.players.push(pl); return pl; }
   function removePlayer(w, id) { w.players = w.players.filter(p => p.id !== id); w.players.forEach((p, i) => { p.slot = i; p.team = i % 2; place(w, p); }); }
   const colorOf = (w, p) => TEAM_COLORS[p.team];
   // rozestavení: tým 0 dole, tým 1 nahoře; dva hráči v týmu = levá/pravá půlka
-  function place(w, p) { const mates = w.players.filter(q => q.team === p.team && q !== p).length; p.y = p.team === 0 ? H - 30 : 30; p.half = mates ? (p.slot < 2 ? 0 : 1) : -1; p.x = p.half < 0 ? W / 2 : p.half === 0 ? W / 4 : 3 * W / 4; }
+  function place(w, p) { const team = w.players.filter(q => q.team === p.team), other = w.players.filter(q => q.team !== p.team).length; const idx = team.indexOf(p); p.y = p.team === 0 ? H - 30 : 30; p.half = team.length > 1 ? (idx === 0 ? 0 : 1) : -1; p.x = p.half < 0 ? W / 2 : p.half === 0 ? W / 4 : 3 * W / 4; p.w = T.paddleW * (team.length === 1 && other > 1 ? 1.6 : 1); }
   function resetRound(w, seed, opts = {}) {
-    const f = create(seed, opts); Object.assign(w, { seed, mode: f.mode, balls: [], score: [0, 0], time: f.time, roundSeconds: f.roundSeconds, phase: "countdown", countdown: 3, dirty: [], events: [], results: null, serveT: 0 });
+    const f = create(seed, opts); Object.assign(w, { seed, mode: f.mode, balls: [], score: [0, 0], winPoints: f.winPoints, time: f.time, roundSeconds: f.roundSeconds, phase: "countdown", countdown: 3, dirty: [], events: [], results: null, serveT: 0 });
     w.players.forEach((p, i) => { p.slot = i; p.team = i % 2; p.ci = i; });
+    // nerovné týmy (3 hráči): 2 vs 1
+    w.players.forEach(p => place(w, p));
     if (opts.bots) w.players.forEach(p => { if (p.bot) assignBot(p, opts.bots); });
     w.players.forEach(p => { Object.assign(p, { score: 0, kos: 0, hits: 0, input: { dx: 0, dy: 0, dash: false }, ai: {} }); place(w, p); });
     w.serve = 0;
@@ -36,10 +38,10 @@ window.Sim = (() => {
         const top = p.team === 1; if (top ? b.vy > 0 : b.vy < 0) continue;
         const py = p.y, half = p.w / 2;
         if (Math.abs(b.y - py) < R + 6 && b.x > p.x - half - R && b.x < p.x + half + R) {
-          const rel = clamp((b.x - p.x) / half, -1, 1); const sp = Math.min(T.ballMax, b.sp * 1.06); b.sp = sp; const ang = rel * 1.1; b.vx = Math.sin(ang) * sp; b.vy = Math.cos(ang) * sp * (top ? 1 : -1); b.y = py + (top ? R + 6 : -(R + 6)); p.hits++; w.events.push({ t: "hit", id: p.id, x: b.x, y: b.y });
+          const rel = clamp((b.x - p.x) / half, -1, 1); const sp = Math.min(T.ballMax, b.sp * T.speedUp); b.sp = sp; const ang = rel * 1.1; b.vx = Math.sin(ang) * sp; b.vy = Math.cos(ang) * sp * (top ? 1 : -1); b.y = py + (top ? R + 6 : -(R + 6)); p.hits++; w.events.push({ t: "hit", id: p.id, x: b.x, y: b.y });
         }
       }
-      if (b.y < -R || b.y > H + R) { const scorer = b.y < 0 ? 0 : 1; w.score[scorer]++; for (const p of w.players) if (p.team === scorer) p.score++; w.events.push({ t: "goal", team: scorer, x: b.x, y: clamp(b.y, 10, H - 10) }); w.serve++; w.serveT = 1.2; w.balls = []; if (w.score[scorer] >= T.winPoints) return endRound(w); break; }
+      if (b.y < -R || b.y > H + R) { const scorer = b.y < 0 ? 0 : 1; w.score[scorer]++; for (const p of w.players) if (p.team === scorer) p.score++; w.events.push({ t: "goal", team: scorer, x: b.x, y: clamp(b.y, 10, H - 10) }); w.serve++; w.serveT = 1.2; w.balls = []; if (w.score[scorer] >= w.winPoints) return endRound(w); break; }
     }
   }
   function endRound(w) { w.phase = "end"; w.events.push({ t: "end" }); w.results = results(w); }

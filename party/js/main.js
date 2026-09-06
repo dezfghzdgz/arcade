@@ -3,7 +3,7 @@
   const T = PT_CONFIG.tuning;
   const screens = ["menu", "lobby", "game", "results"];
   const COLORS = ["#FF5E7E", "#5EE1D0", "#FFCF5A", "#8A5CFF", "#B6FF5A", "#FF9A3C", "#6FC3FF", "#FF7AD9"];
-  const GAMES = ["reflex", "race", "math", "color", "hold", "count"];
+  const GAMES = ["reflex", "race", "math", "color", "hold", "count", "odd", "simon", "target", "stopbar", "typing", "bigger"];
   let role = null, phase = "menu", lobby = { code: "", hostId: null, players: [], speed: "normal" };
   let game = null, cur = null, timerTick = null, totals = {};
 
@@ -13,6 +13,7 @@
   const me = () => ({ id: Net.myId, name: myName() });
   const nameOf = (id) => (lobby.players.find(p => p.id === id) || {}).name || "?";
   const colorOf = (id) => COLORS[Math.max(0, lobby.players.findIndex(p => p.id === id)) % COLORS.length];
+  let actx; const beep = (f, dur = 0.12) => { if (!Storage.sound) return; try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); const o = actx.createOscillator(), g = actx.createGain(); o.type = "triangle"; o.frequency.value = f; g.gain.value = 0.08; g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + dur); o.connect(g).connect(actx.destination); o.start(); o.stop(actx.currentTime + dur + 0.01); } catch {} };
   const mulberry = (a) => () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
 
   // ---------- menu / lobby
@@ -78,7 +79,7 @@
     $("g-step").textContent = Lang("round", m.round, m.rounds); $("g-title").textContent = Lang.g(m.game); $("g-hint").textContent = Lang.g(m.game + "Hint"); $("g-score").classList.add("hidden"); $("g-area").classList.remove("hidden");
     const area = $("g-area"); area.innerHTML = ""; clearInterval(timerTick); $("g-timer").textContent = "";
     const rand = mulberry(m.seed); Audio2.whistle();
-    if (m.game === "reflex") reflex(area, rand); else if (m.game === "race") race(area); else if (m.game === "math") math(area, rand); else if (m.game === "color") colorGame(area, rand); else if (m.game === "hold") hold(area); else if (m.game === "count") count(area, rand);
+    ({ reflex, race, math, color: colorGame, hold, count, odd, simon, target, stopbar, typing, bigger })[m.game](area, rand);
   }
   const stamp = () => Math.round(performance.now() - cur.t0);
   function reflex(area, rand) {
@@ -107,9 +108,22 @@
   function hold(area) { const b = document.createElement("button"); b.className = "bigbtn gray"; b.textContent = "0.00"; area.appendChild(b); let t0 = 0, iv = null; b.onpointerdown = (e) => { e.preventDefault(); if (cur.sent || t0) return; t0 = performance.now(); b.className = "bigbtn green"; iv = setInterval(() => { const s = (performance.now() - t0) / 1000; b.textContent = s < 2 ? s.toFixed(2) : "?.??"; }, 50); }; const rel = () => { if (!t0 || cur.sent) return; clearInterval(iv); const s = (performance.now() - t0) / 1000; const off = Math.abs(s - 5); b.className = "bigbtn amber"; b.textContent = s.toFixed(2) + " s"; Audio2.pickup(); submitResult(Math.round(off * 1000)); }; b.onpointerup = rel; b.onpointerleave = rel; }
   function count(area, rand) { const n = 6 + Math.floor(rand() * 14); const box = document.createElement("div"); box.className = "dots"; for (let i = 0; i < n; i++) { const d = document.createElement("i"); d.style.left = (5 + rand() * 88) + "%"; d.style.top = (5 + rand() * 88) + "%"; d.style.background = COLORS[Math.floor(rand() * COLORS.length)]; box.appendChild(d); } area.appendChild(box); const opts = new Set([n]); while (opts.size < 4) opts.add(Math.max(1, n + Math.floor(rand() * 7) - 3)); const arr = [...opts].sort(() => rand() - 0.5); const o = document.createElement("div"); o.className = "opts"; area.appendChild(o); arr.forEach(v => { const b = document.createElement("button"); b.textContent = v; b.onclick = () => { if (cur.sent) return; if (v === n) { b.classList.add("active"); Audio2.pickup(); submitResult(stamp()); } else { b.disabled = true; Audio2.bump(); submitResult(-1); } }; o.appendChild(b); }); }
 
+  // Najdi jiný: mřížka stejných emoji, jedno je jiné
+  function odd(area, rand) { const sets = [["🍎", "🍏"], ["😀", "😃"], ["🐶", "🐕"], ["⭐", "🌟"], ["🔵", "🟦"], ["🍋", "🍊"], ["🐱", "🐈"], ["❤️", "🧡"]]; const [a, b] = sets[Math.floor(rand() * sets.length)]; const n = 5 + Math.floor(rand() * 2); const oddIdx = Math.floor(rand() * n * n); const g = document.createElement("div"); g.className = "opts"; g.style.gridTemplateColumns = `repeat(${n}, 1fr)`; g.style.gap = "4px"; area.appendChild(g); for (let i = 0; i < n * n; i++) { const c = document.createElement("button"); c.textContent = i === oddIdx ? b : a; c.style.padding = "6px 0"; c.style.fontSize = "22px"; c.onclick = () => { if (cur.sent) return; if (i === oddIdx) { c.classList.add("active"); Audio2.pickup(); submitResult(stamp()); } else { c.disabled = true; Audio2.bump(); submitResult(-1); } }; g.appendChild(c); } }
+  // Simon: sekvence 4 barev se přehraje, pak ji zopakuj; skóre = délka správně zopakované (větší lepší -> posíláme záporný čas? použijeme čas do dokončení, chyba = -1)
+  function simon(area, rand) { const cols = ["#FF5E7E", "#4FD37A", "#6FC3FF", "#FFCF5A"]; const seq = Array.from({ length: 5 }, () => Math.floor(rand() * 4)); const o = document.createElement("div"); o.className = "opts"; area.appendChild(o); const btns = cols.map((c, i) => { const b = document.createElement("button"); b.style.background = c; b.style.height = "110px"; b.style.opacity = ".45"; b.disabled = true; o.appendChild(b); return b; }); let k = 0, pos = 0; const play = () => { if (k >= seq.length) { btns.forEach(b => { b.disabled = false; b.style.opacity = ".7"; }); cur.t0 = performance.now(); return; } const b = btns[seq[k]]; b.style.opacity = "1"; beep(300 + seq[k] * 120, 0.25); setTimeout(() => { b.style.opacity = ".45"; k++; setTimeout(play, 220); }, 420); }; setTimeout(play, 600); btns.forEach((b, i) => b.onclick = () => { if (cur.sent) return; if (i === seq[pos]) { pos++; beep(300 + i * 120, 0.12); if (pos === seq.length) { btns.forEach(x => x.classList.add("active")); submitResult(stamp()); } } else { Audio2.bump(); btns.forEach(x => x.disabled = true); submitResult(-1); } }); }
+  // Terč: kolečko skáče po ploše, trefit 5×; čas
+  function target(area, rand) { const box = document.createElement("div"); box.className = "dots"; area.appendChild(box); let hits = 0; const d = document.createElement("i"); d.style.width = "46px"; d.style.height = "46px"; d.style.background = "#FF5E7E"; d.style.cursor = "pointer"; box.appendChild(d); const move = () => { d.style.left = (5 + rand() * 80) + "%"; d.style.top = (5 + rand() * 80) + "%"; }; move(); d.onpointerdown = (e) => { e.preventDefault(); if (cur.sent) return; hits++; beep(500 + hits * 80, 0.06); if (hits >= 6) { d.style.background = "#FFCF5A"; submitResult(stamp()); } else move(); }; }
+  // Zastav lištu: ukazatel jezdí, zastav ho co nejblíž středu
+  function stopbar(area, rand) { const wrap = document.createElement("div"); wrap.style.cssText = "width:100%;max-width:420px;height:40px;border-radius:20px;background:var(--bg-2);position:relative;overflow:hidden"; area.appendChild(wrap); const mid = document.createElement("div"); mid.style.cssText = "position:absolute;left:50%;top:0;bottom:0;width:6px;margin-left:-3px;background:#FFCF5A"; wrap.appendChild(mid); const cursor = document.createElement("div"); cursor.style.cssText = "position:absolute;top:4px;width:22px;height:32px;border-radius:11px;background:#fff"; wrap.appendChild(cursor); const b = document.createElement("button"); b.className = "bigbtn red"; b.textContent = "STOP"; area.appendChild(b); let x = 0, dir = 1, iv = setInterval(() => { x += dir * 3.2; if (x > 100 || x < 0) dir = -dir; cursor.style.left = `calc(${x}% - 11px)`; }, 16); b.onpointerdown = (e) => { e.preventDefault(); if (cur.sent) return; clearInterval(iv); const off = Math.abs(x - 50); b.className = "bigbtn amber"; b.textContent = off.toFixed(1) + "%"; Audio2.pickup(); submitResult(Math.round(off * 100)); }; }
+  // Psaní: napiš slovo co nejrychleji
+  function typing(area, rand) { const words = Lang.current() === "cs" ? ["banán", "kaktus", "raketa", "ponožka", "pirát", "letadlo", "želva", "meloun"] : ["banana", "cactus", "rocket", "pirate", "turtle", "melon", "pillow", "coffee"]; const wd = words[Math.floor(rand() * words.length)]; const q = document.createElement("div"); q.className = "q"; q.textContent = wd; area.appendChild(q); const inp = document.createElement("input"); inp.autocomplete = "off"; inp.autocapitalize = "none"; inp.style.textAlign = "center"; area.appendChild(inp); setTimeout(() => inp.focus(), 50); inp.oninput = () => { if (cur.sent) return; if (inp.value.trim().toLowerCase() === wd) { inp.disabled = true; Audio2.pickup(); submitResult(stamp()); } }; }
+  // Větší číslo: rychle vyber větší z dvou výrazů
+  function bigger(area, rand) { const a = 3 + Math.floor(rand() * 9), b = 3 + Math.floor(rand() * 9), c = 3 + Math.floor(rand() * 9), d = 3 + Math.floor(rand() * 9); const L1 = `${a} × ${b}`, L2 = `${c} + ${d * 3}`; const v1 = a * b, v2 = c + d * 3; if (v1 === v2) return bigger(area, rand); quiz(area, Lang.g("biggerQ"), [L1, L2], v1 > v2 ? 0 : 1); }
+
   function showScore(m) {
     clearInterval(timerTick); totals = m.totals; $("g-area").classList.add("hidden"); const sc = $("g-score"); sc.classList.remove("hidden");
-    const fmt = (v) => v === undefined || v === null || v < 0 ? "✕" : m.game === "race" ? Lang.g("taps", v) : m.game === "hold" ? Lang.g("holdOff", (v / 1000).toFixed(2)) : Lang.g("ms", v);
+    const fmt = (v) => v === undefined || v === null || v < 0 ? "✕" : m.game === "race" ? Lang.g("taps", v) : m.game === "hold" ? Lang.g("holdOff", (v / 1000).toFixed(2)) : m.game === "stopbar" ? (v / 100).toFixed(1) + "%" : Lang.g("ms", v);
     sc.innerHTML = m.rows.map(r => `<div class="res-row${r.id === Net.myId ? " me" : ""}"><span class="dot" style="background:${colorOf(r.id)}"></span><span class="nm"></span><span>${fmt(r.v)}</span><span class="gain">${r.gain ? "+" + r.gain : ""}</span><b>${totals[r.id] || 0}</b></div>`).join("");
     [...sc.querySelectorAll(".nm")].forEach((el, i) => el.textContent = nameOf(m.rows[i].id)); if (m.rows[0] && m.rows[0].id === Net.myId && m.rows[0].gain) Audio2.win();
   }
@@ -127,6 +141,7 @@
   $("btn-res-menu").onclick = () => leaveToMenu();
 
   Lang.apply(); refreshMenu(); show("menu"); Monetization.init();
+  if (new URLSearchParams(location.search).get("create")) { history.replaceState(null, "", location.pathname); setTimeout(() => $("btn-create").click(), 150); }
   const roomParam = new URLSearchParams(location.search).get("room");
   if (roomParam) { history.replaceState(null, "", location.pathname); $("code-input").value = roomParam.toUpperCase(); setTimeout(() => join(roomParam.toUpperCase()), 300); }
 })();

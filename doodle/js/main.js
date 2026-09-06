@@ -162,6 +162,7 @@
 
   // ---------- start
   Lang.apply(); refreshMenu(); show("menu"); Monetization.init();
+  if (new URLSearchParams(location.search).get("create")) { history.replaceState(null, "", location.pathname); setTimeout(() => $("btn-create").click(), 150); }
   const roomParam = new URLSearchParams(location.search).get("room");
   if (roomParam) { history.replaceState(null, "", location.pathname); $("code-input").value = roomParam.toUpperCase(); setTimeout(() => join(roomParam.toUpperCase()), 300); }
 })();

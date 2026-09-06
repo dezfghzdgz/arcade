@@ -21,7 +21,7 @@ Statický web (žádný build): `index.html` rozcestník, `zigdash/`, `splatz/`,
 Tok: hráč se přihlásí → „Submit a game" (název, popis, odkaz na hru hostovanou kdekoliv, ikona) → ty ve frontě schválíš/zamítneš s poznámkou → schválená hra se objeví v sekci „From the community" s jménem autora a otevírá se v nové záložce.
 
 ## Appka a offline
-Web je PWA: na rozcestníku je tlačítko **Nainstalovat** (Chrome/Edge na PC i Androidu; na iPhonu Sdílet → Přidat na plochu) a **Uložit hry pro offline** – service worker (`sw.js`) stáhne všechny hry do cache. Sólo hry pak fungují úplně bez internetu, online hry se načtou, ale na hraní potřebují síť. Po každém nasazení nové verze zvedni `VERSION` v `sw.js`, aby se cache obnovila.
+Web je PWA: na rozcestníku je tlačítko **Nainstalovat** (Chrome/Edge na PC i Androidu; na iPhonu Sdílet → Přidat na plochu) a **Uložit hry pro offline** – service worker (`sw.js`) stáhne všechny hry do cache. Sólo hry pak fungují úplně bez internetu, online hry se načtou, ale na hraní potřebují síť. Po každém nasazení nové verze zvedni `VERSION` v `sw.js` (a `?v=` u `hub.js/hub.css` v `index.html`). Rozcestník kontroluje novou verzi při každém otevření a po aktivaci se sám jednou obnoví, takže se změny ukážou hned. Karta Party otevírá hru rovnou s založenou místností (`?create=1` funguje u všech online her).
 
 ## Program na PC
 Ve složce `desktop/` je Electron obal – návod tamtéž (výsledek je `.exe` instalátor / přenosné exe, na Macu `.dmg`). Hotové soubory nahraj do GitHub Releases a odkaz dej na rozcestník.
@@ -29,14 +29,17 @@ Ve složce `desktop/` je Electron obal – návod tamtéž (výsledek je `.exe` 
 ## Postup u účtu
 `SETUP3.sql` založí tabulku `progress`. Přihlášený hráč (session z rozcestníku) má postup v Roll, Tubes a Bricks uložený u účtu a na jiném zařízení pokračuje tam, kde skončil (vyšší level vyhrává). Bez přihlášení zůstává postup jen v prohlížeči. Hry čtou session ze stejného localStorage jako rozcestník; po hodině bez otevřeného rozcestníku token vyprší a ukládá se jen lokálně (otevřením rozcestníku se obnoví).
 
+## Rozcestník
+Na PC dva sloupce: vlevo Offline · sólo, vpravo Online · s kamarády (Party první). Na mobilu jeden sloupec, hry se střídají online/sólo.
+
 ## Nové hry
 - **Fleet** (`fleet/`) – námořní bitva až pro 8: joystick = kormidlo (loď se otáčí omezenou rychlostí, zrychluje a dojíždí), tlačítko = salva ze obou boků (3 koule na stranu), ostrovy jako překážky, 3 zásahy = ke dnu, respawn 3 s. Módy: Bitva, Flotily (týmy), Král moří (zóna se stěhuje), Poklad (truhly, potopená loď půlku vysype).
 - **Roll** (`roll/`) – kulička jede, dokud nenarazí, a maluje; obarvi všechno. Levely se generují ze seedu (blob s chodbami) a ověřují hledáním nejkratšího řešení – hvězdičky podle počtu tahů proti optimu. Zpět, restart, přeskočit za reklamu. Žebříček = dosažený level.
 - **Tubes** (`tubes/`) – přelévání barev (Water Sort): levely se generují zamícháním vyřešeného stavu zpětnými tahy (vždy řešitelné), počet barev roste s levelem až do 12. Zpět, restart, 3 nápovědy zdarma a další za reklamu, zkumavka navíc za reklamu.
 - **Flow** (`flow/`) – spojování teček (Flow Free): mřížka se rozdělí náhodnými cestami, jejich konce jsou tečky, takže je vždy řešitelné; 5×5 až 9×9, tažením prstem, přerušení cizí trubky, nápovědy (3 + za reklamu), přeskočení za reklamu, postup u účtu.
 - **Snakes** (`snakes/`) – multiplayer had až pro 8 na mřížce 36×60: joystick = směr, držení BOOST = zrychlení za cenu délky, jídlo = bod, náraz soupeře do tebe = 3 body, tělo mrtvého hada se mění v jídlo. Módy Aréna (respawn), Poslední (bez respawnu), Týmy.
-- **Party** (`party/`) – „1234 Player Games" online: 2–8 lidí, každý na svém mobilu, 5/8/12 kol náhodných miniher (Reflex, Ťukací závod, Rychlá matika, Barvy/Stroop, Drž 5 s, Počítání teček). Body 3/2/1 za pořadí v kole, mezi koly tabulka. Reakční časy se měří lokálně, takže latence nikoho neznevýhodní.
-- **Pong** (`pong/`) – online Pong 1v1 nebo 2v2 (dole vs nahoře, ve 4 každý hlídá půlku), první na 7, míček zrychluje odrazy; módy Klasika, Rychlý, Dva míčky. Klient si míček extrapoluje mezi snapshoty (15×/s), pálku předpovídá.
+- **Party** (`party/`) – „1234 Player Games" online: 2–8 lidí, každý na svém mobilu, 5/8/12 kol náhodných miniher: Reflex, Ťukací závod, Rychlá matika, Barvy (Stroop), Drž 5 s, Počítání teček, Najdi jiný, Simon, Terč, Zastav lištu, Psaní, Větší?. Body 3/2/1 za pořadí v kole, mezi koly tabulka. Reakční časy se měří lokálně, takže latence nikoho neznevýhodní.
+- **Pong** (`pong/`) – online Pong 1v1, 2v2 i 2v1 (sám proti dvěma má pálku 1,6×), cíl na body (7/11/15) nebo na čas (60/120/180 s), míček s každým odrazem zrychlí o 4 % (`speedUp`); módy Klasika, Rychlý, Dva míčky. Klient si míček extrapoluje mezi snapshoty (15×/s), pálku předpovídá.
 - **Solitaire** (`solitaire/`) – Klondike po 1/po 3/denní, tap = výběr a přesun, dvojklik = nahoru, tažení, zpět, automatické dohrání, žebříček časů.
 - **Boom** má 5 módů: Klasika, Chaos (2 bomby), Zóna (aréna se zmenšuje), Týmy (bombu jen soupeři), Lovec (bomba nebouchá, kdo ji drží, sbírá body, 60 s).
 - **Boom** (`boom/`) – horký brambor až pro 8: bomba se předává dotykem, dash = odraz/únik, komu bouchne, vypadá; poslední bere 3 body, první na 6 vyhrává. Mód Chaos = dvě bomby.

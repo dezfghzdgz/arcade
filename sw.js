@@ -1,10 +1,10 @@
 // Service worker Arcade: rozcestník a sólo hry fungují offline. Online hry se načtou z cache, na hraní potřebují síť.
-const VERSION = "arcade-v8";
+const VERSION = "arcade-v10";
 const GAMES = ["zigdash", "merge", "snake", "mines", "bricks", "sudoku", "solitaire", "roll", "tubes", "flow", "splatz", "tower", "front", "doodle", "boom", "fleet", "snakes", "party", "pong"];
 const SHELL = ["./", "./hub.css", "./hub.js", "./config.js", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
 const norm = (u) => { const url = new URL(u, self.location.href); url.search = ""; if (url.pathname.endsWith("/index.html")) url.pathname = url.pathname.slice(0, -10); return url.href; };
 self.addEventListener("install", (e) => { e.waitUntil((async () => { const c = await caches.open(VERSION); for (const u of SHELL) { try { const r = await fetch(u, { cache: "no-cache" }); if (r.ok) await c.put(norm(u), r); } catch {} } await self.skipWaiting(); })()); });
-self.addEventListener("activate", (e) => { e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== VERSION).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
+self.addEventListener("activate", (e) => { e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== VERSION).map(k => caches.delete(k)))).then(() => self.clients.claim()).then(async () => { (await self.clients.matchAll({ type: "window" })).forEach(cl => cl.postMessage({ t: "updated", v: VERSION })); })); });
 const cacheable = (url) => url.origin === self.location.origin || /fonts\.g|jsdelivr/.test(url.hostname);
 self.addEventListener("fetch", (e) => {
   if (e.request.method !== "GET") return;
@@ -12,7 +12,7 @@ self.addEventListener("fetch", (e) => {
   const key = norm(url.href);
   e.respondWith((async () => {
     const c = await caches.open(VERSION);
-    try { const r = await fetch(e.request); if (r.ok && r.type !== "opaque") c.put(key, r.clone()); return r; }
+    try { const r = await fetch(e.request.mode === "navigate" ? new Request(e.request.url, { cache: "no-store" }) : e.request); if (r.ok && r.type !== "opaque") c.put(key, r.clone()); return r; }
     catch { const m = await c.match(key); if (m) return m; if (e.request.mode === "navigate") { const dir = await c.match(norm(new URL("./", url).href)); if (dir) return dir; return c.match(norm("./")); } return new Response("", { status: 504 }); }
   })());
 });

@@ -64,3 +64,9 @@ h2.section { font-size: 18px; color: var(--dim); margin: 28px 0 8px; }
 .install b { color: var(--ink); } .install .acts { display: flex; gap: 8px; }
 .install button { font-size: 13px; }
 .btn-like { font-weight: 800; font-size: 13px; color: var(--ink); background: var(--bg2); border: 2px solid rgba(255,255,255,.12); border-radius: 999px; padding: 8px 16px; text-decoration: none; }
+
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; width: 100%; max-width: 900px; }
+.colh { font-size: 14px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase; margin: 4px 0 10px; text-align: left; }
+.solo-h { color: var(--amber); } .friends-h { color: var(--aqua); }
+.grid.one { grid-template-columns: 1fr; }
+@media (max-width: 640px) { .cols { display: block; } .colh { display: none; } .cols .col { display: contents; } .grid.one { display: contents; } .card { margin-bottom: 14px; } .card.solo { order: 0; } }

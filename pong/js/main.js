@@ -10,7 +10,7 @@
   let world = null, cw = null, view = null;
   const defOpts = () => Object.assign({ target: 0, pu: "normal", bots: "mix" }, Storage.opts);
   let lobby = { code: "", hostId: null, players: [], mode: Storage.lastMode, seconds: Storage.lastSeconds, opts: defOpts() };
-  const TARGETS = {};
+  const TARGETS = { classic: ["p7", "p11", "p15", "t60", "t120", "t180"], speed: ["p7", "p11", "p15", "t60", "t120", "t180"], multi: ["p7", "p11", "p15", "t60", "t120", "t180"] };
   const mySlot = () => lobby.players.findIndex(p => p.id === Net.myId);
   let phase = "menu";
   let myResult = null, doubled = false, runStats = null, roundStart = 0;
@@ -119,7 +119,7 @@
     const seg = (id, items, cur, label, fn) => { const el = $(id); el.innerHTML = ""; for (const v of items) { const b = document.createElement("button"); b.textContent = label(v); b.className = v === cur ? "active" : ""; b.disabled = !canEdit; b.onclick = () => fn(v); el.appendChild(b); } };
     const tg = TARGETS[lobby.mode];
     $("target-row").classList.toggle("hidden", !tg);
-    if (tg) { if (!tg.includes(lobby.opts.target)) lobby.opts.target = 0; seg("target-btns", tg, lobby.opts.target, (v) => v === 0 ? Lang("timeOnly") : lobby.mode === "koth" ? Lang("seconds", v) : Lang("pts", v), (v) => setOpt("target", v)); }
+    if (tg) { if (!tg.includes(lobby.opts.target)) lobby.opts.target = "p7"; seg("target-btns", tg, lobby.opts.target, (v) => v[0] === "t" ? Lang("seconds", v.slice(1)) : Lang("pts", v.slice(1)), (v) => setOpt("target", v)); }
     $("pu-btns").parentElement.classList.add("hidden"); $("len-btns").parentElement.classList.add("hidden");
     seg("bots-btns", Object.keys(Sim.BOT_SKILL), lobby.opts.bots, (v) => Lang.botLv(v), (v) => setOpt("bots", v));
   }
@@ -131,7 +131,7 @@
   // ---------- kolo (solo/host)
   function startRound() {
     doubled = false; myResult = null; runStats = { dashes: 0, kos: 0, powerups: 0, captures: 0 };
-    Sim.resetRound(world, Date.now(), { mode: lobby.mode, seconds: lobby.seconds, bots: lobby.opts.bots });
+    Sim.resetRound(world, Date.now(), { mode: lobby.mode, target: lobby.opts.target, bots: lobby.opts.bots });
     lobby.players = Sim.lobbyInfo(world);
     if (role === "host") Net.send("start", { seed: world.seed, mode: lobby.mode, seconds: lobby.seconds, opts: lobby.opts, players: lobby.players });
     phase = "game"; roundStart = performance.now();
@@ -187,7 +187,7 @@
   function clientStart(seed, mode, seconds, players, opts) {
     doubled = false; myResult = null; runStats = { dashes: 0, kos: 0, powerups: 0, captures: 0 };
     lobby.players = players; lobby.mode = mode; lobby.seconds = seconds; if (opts) lobby.opts = opts;
-    cw = Sim.create(seed, { mode, seconds, client: true, target: lobby.opts.target, pu: lobby.opts.pu });
+    cw = Sim.create(seed, { mode, client: true, target: lobby.opts.target });
     const idx = players.findIndex(p => p.id === Net.myId);
     const info = players[idx] || { name: myName(), hat: Storage.hat, ci: 0 };
     const m = Sim.addPlayer(cw, { id: Net.myId, name: info.name, hat: info.hat, pattern: info.pattern });
@@ -287,14 +287,14 @@
     if (phase === "game" || phase === "results") {
       if (role === "client") for (const r of remote.values()) { const k = Math.min(1, dt * 14); r.dx += (r.tx - r.dx) * k; r.dy += (r.ty - r.dy) * k; }
       const v = buildView(); Render.draw(v, dt);
-      if (phase === "game") { $("hud-time").textContent = Math.ceil(v.time); barsAcc += dt; if (barsAcc > 0.3) { barsAcc = 0; renderBars(); } }
+      if (phase === "game") { $("hud-time").textContent = v.time > 5000 ? ((v.score || [0, 0]).join(" : ")) : Math.ceil(v.time); barsAcc += dt; if (barsAcc > 0.3) { barsAcc = 0; renderBars(); } }
     } else Render.draw({ players: [], balls: [], phase: "idle" }, dt);
     requestAnimationFrame(frame);
   }
   function renderBars() {
     const bars = $("hud-bars"); const sc = role === "client" ? (view.score || [0, 0]) : world.score; const myTeam = (role === "client" ? cw.players[0].slot : (world.players.find(p => p.id === Net.myId) || {}).slot || 0) % 2;
     const rows = [0, 1].map(t => ({ color: Sim.TEAM_COLORS[t], me: myTeam === t, v: sc[t] }));
-    const max = T.winPoints;
+    const max = role === "client" ? (String(lobby.opts.target || "p7")[0] === "t" ? Math.max(1, ...rows.map(r => r.v)) : parseInt(String(lobby.opts.target).slice(1)) || 7) : world.winPoints > 100 ? Math.max(1, ...rows.map(r => r.v)) : world.winPoints;
     if (bars.childElementCount !== rows.length) bars.innerHTML = rows.map(r => `<div class="hud-bar${r.me ? " me" : ""}"><i style="background:${r.color}"></i></div>`).join("");
     rows.forEach((r, i) => { const el = bars.children[i]; el.firstChild.style.width = Math.min(100, 100 * r.v / max) + "%"; el.firstChild.style.background = r.color; el.classList.toggle("me", r.me); });
   }
@@ -388,6 +388,7 @@
   Render.init($("game")); Lang.apply(); refreshMenu(); show("menu"); requestAnimationFrame(frame);
   Monetization.init().then(async () => { const g = await Monetization.claimWebPurchases(); if (g.length) { toast(Lang("purchaseActive")); refreshMenu(); } });
   const bonus = Missions.dailyBonus(); if (bonus) setTimeout(() => { toast(Lang("dailyBonus", bonus.reward, bonus.streak), 3000); Audio2.reward(); refreshMenu(); }, 600);
+  if (new URLSearchParams(location.search).get("create")) { history.replaceState(null, "", location.pathname); setTimeout(() => $("btn-create").click(), 150); }
   const roomParam = new URLSearchParams(location.search).get("room");
   if (roomParam) { history.replaceState(null, "", location.pathname); $("code-input").value = roomParam.toUpperCase(); setTimeout(() => join(roomParam.toUpperCase()), 300); }
 })();
