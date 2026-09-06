@@ -1,0 +1,369 @@
+// Simulace Front. Mřížka: terrain (0 voda / 1 země), owner (0 nikdo / slot+1). Ekonomika: vojáci + zlato.
+// Stavby: město, obranné stanoviště, přístav, silo, SAM, továrna. Jednotky: loď (výsadek), válečná loď, jaderné zbraně.
+window.Sim = (() => {
+  const T = FR_CONFIG.tuning, U = FR_CONFIG.units;
+  const GW = 512, GH = 320, N = GW * GH;
+  const BASE = ["#FF5E7E", "#5EE1D0", "#FFCF5A", "#8A5CFF", "#B6FF5A", "#FF9A3C", "#6FC3FF", "#FF7AD9"];
+  // až 64 barev: 8 základních + generované odstíny
+  const COLORS = BASE.concat(Array.from({ length: 56 }, (_, i) => { const h = (i * 137.508) % 360, l = 55 + (i % 3) * 8; return `hsl(${Math.round(h)}, 70%, ${l}%)`; }));
+  const NATIONS = ["Bavaria", "Prussia", "Aragon", "Castile", "Burgundy", "Normandy", "Wessex", "Mercia", "Scotia", "Hibernia", "Lombardy", "Tuscany", "Venetia", "Sicily", "Byzantium", "Thrace", "Dacia", "Illyria", "Pannonia", "Bohemia", "Moravia", "Silesia", "Pomerania", "Livonia", "Novgorod", "Muscovy", "Kievan", "Khazaria", "Anatolia", "Persia", "Bactria", "Sogdia", "Punjab", "Bengal", "Deccan", "Ceylon", "Yunnan", "Shu", "Wu", "Wei", "Goryeo", "Yamato", "Ryukyu", "Luzon", "Majapahit", "Siam", "Khmer", "Champa", "Nubia", "Axum", "Carthage", "Numidia", "Mali", "Songhai", "Kongo", "Zulu", "Inca", "Maya", "Aztec", "Tupi", "Mapuche", "Iroquois", "Cree", "Inuit"];
+  const TEAM_COLORS = COLORS;
+  const MODES = { classic: {}, timed: {} };
+  const MAPS = ["random", "islands", "continents", "pangaea", "lake", "archipelago", "draw"];
+  const UNIT_KEYS = Object.keys(U);
+  const BOT_SKILL = { easy: [0.15, 0.35], mid: [0.45, 0.65], hard: [0.8, 1.0], mix: [0.15, 1.0] };
+  const PU_RATE = {};
+  const mulberry = (a) => () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  const idx = (x, y) => y * GW + x;
+  const cx = (i) => i % GW, cy = (i) => (i / GW) | 0;
+  const dist = (a, b) => Math.hypot(cx(a) - cx(b), cy(a) - cy(b));
+  const N4 = (i, fn) => { const x = cx(i), y = cy(i); if (x > 0) fn(i - 1); if (x < GW - 1) fn(i + 1); if (y > 0) fn(i - GW); if (y < GH - 1) fn(i + GW); };
+
+  // ---------- mapy
+  function blobs(rand, t, list) { for (const [bx, by, rx, ry, rot] of list) for (let y = 0; y < GH; y++) for (let x = 0; x < GW; x++) { const dx = x - bx, dy = y - by, u = (dx * Math.cos(rot) + dy * Math.sin(rot)) / rx, v = (-dx * Math.sin(rot) + dy * Math.cos(rot)) / ry; if (u * u + v * v + (rand() - 0.5) * 0.3 < 1) t[idx(x, y)] = 1; } }
+  function smooth(t) { const s = new Uint8Array(t); for (let y = 1; y < GH - 1; y++) for (let x = 1; x < GW - 1; x++) { let n = 0; for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) n += t[idx(x + i, y + j)]; s[idx(x, y)] = n >= 5 ? 1 : 0; } for (let x = 0; x < GW; x++) { s[x] = 0; s[idx(x, GH - 1)] = 0; } for (let y = 0; y < GH; y++) { s[idx(0, y)] = 0; s[idx(GW - 1, y)] = 0; } return s; }
+  function genTerrain(seed, map) {
+    const rand = mulberry(seed || 1), t = new Uint8Array(N), R = (a, b) => a + rand() * (b - a);
+    if (map === "islands") { const L = []; for (let b = 0; b < 12; b++) L.push([R(50, GW - 50), R(34, GH - 34), R(30, 70), R(24, 48), R(0, 3.14)]); blobs(rand, t, L); }
+    else if (map === "continents") { blobs(rand, t, [[GW * 0.28, GH * 0.5, GW * 0.2, GH * 0.36, R(-0.3, 0.3)], [GW * 0.73, GH * 0.5, GW * 0.2, GH * 0.36, R(-0.3, 0.3)]]); for (let b = 0; b < 6; b++) blobs(rand, t, [[R(50, GW - 50), R(32, GH - 32), R(14, 24), R(10, 18), 0]]); }
+    else if (map === "pangaea") { blobs(rand, t, [[GW * 0.5, GH * 0.5, GW * 0.42, GH * 0.4, 0]]); for (let b = 0; b < 9; b++) { const bx = R(80, GW - 80), by = R(50, GH - 50), r = R(16, 32); for (let y = 0; y < GH; y++) for (let x = 0; x < GW; x++) if (Math.hypot(x - bx, y - by) < r) t[idx(x, y)] = 0; } }
+    else if (map === "lake") { blobs(rand, t, [[GW * 0.5, GH * 0.5, GW * 0.46, GH * 0.45, 0]]); for (let y = 0; y < GH; y++) for (let x = 0; x < GW; x++) if (Math.hypot((x - GW / 2) / 1.4, y - GH / 2) < GH * 0.26 + (rand() - 0.5) * 3) t[idx(x, y)] = 0; }
+    else if (map === "archipelago") { const L = []; for (let b = 0; b < 34; b++) L.push([R(28, GW - 28), R(20, GH - 20), R(14, 32), R(10, 24), R(0, 3.14)]); blobs(rand, t, L); }
+    else { const L = []; const n = 7 + Math.floor(rand() * 5); for (let b = 0; b < n; b++) L.push([R(42, GW - 42), R(32, GH - 32), R(32, 80), R(24, 54), R(0, 3.14)]); blobs(rand, t, L); }
+    return smooth(t);
+  }
+
+  function create(seed, opts = {}) {
+    const mode = MODES[opts.mode] ? opts.mode : "classic", map = MAPS.includes(opts.map) ? opts.map : "random";
+    const disabled = new Set(opts.disabled || []);
+    return {
+      seed, mode, map, draw: map === "draw", disabled, teams: false,
+      terrain: map === "draw" ? new Uint8Array(N) : genTerrain(seed, map), owner: new Uint8Array(N), cells: new Int32Array(T.maxNations + 1), alliances: new Set(), requests: [],
+      players: [], attacks: [], boats: [], nukes: [], buildings: [], ships: [], trains: [], bid: 1,
+      phase: "countdown", countdown: 3, time: mode === "timed" ? 180 : 480, t: 0,
+      dirty: [], tdirty: [], events: [], client: !!opts.client,
+    };
+  }
+  function addPlayer(w, p) {
+    const i = w.players.length; if (i >= T.maxNations || (!p.bot && w.players.filter(q => !q.bot).length >= T.maxPlayers)) return null;
+    const pl = Object.assign({ troops: 30, gold: T.startGold, work: 0.7, spawned: false, alive: true, out: 0, input: [], bot: false, hat: "none", pattern: "none", pref: -1, ai: {}, skill: 0.5, kills: 0, peak: 0 }, p, { slot: i });
+    pl.ci = pickColor(w, pl.pref); pl.team = i % 2; w.players.push(pl); return pl;
+  }
+  function pickColor(w, pref) { const used = new Set(w.players.map(p => p.ci)); if (pref >= 0 && !used.has(pref)) return pref; const free = COLORS.map((_, i) => i).filter(i => !used.has(i)); return free.length ? free[Math.floor(Math.random() * free.length)] : 0; }
+  function removePlayer(w, id) { w.players = w.players.filter(q => q.id !== id); w.players.forEach((q, i) => { q.slot = i; q.team = i % 2; }); w.owner.fill(0); w.cells.fill(0); w.buildings = []; }
+  // spojenectví: klíč "a|b" (menší slot první)
+  const akey = (a, b) => a < b ? a + "|" + b : b + "|" + a;
+  const allied = (w, a, b) => w.alliances.has(akey(a, b));
+  function requestAlliance(w, p, target) {
+    if (!target || target === p.slot + 1) return;
+    if (allied(w, p.slot + 1, target)) {   // obnovení
+      const t = w.players.find(q => q.slot + 1 === target); if (!t) return;
+      if (t.bot) { if (Math.random() < 0.6 + t.skill * 0.3) { w.allyT[akey(p.slot + 1, target)] = w.t + T.allianceSeconds; w.events.push({ t: "renewed", a: p.slot + 1, b: target }); } else w.events.push({ t: "allyReject", from: target, to: p.slot + 1 }); return; }
+      if (!w.requests.some(r => r.from === p.slot + 1 && r.to === target)) { w.requests.push({ from: p.slot + 1, to: target, t: w.t, renew: true }); w.events.push({ t: "allyReq", from: p.slot + 1, to: target, renew: true }); }
+      return;
+    }
+    const t = w.players.find(q => q.slot + 1 === target); if (!t || !t.alive) return;
+    if (t.bot) { if (Math.random() < 0.35 + t.skill * 0.3 && w.cells[p.slot + 1] < w.cells[target] * 3) acceptAlliance(w, p.slot + 1, target); else w.events.push({ t: "allyReject", from: target, to: p.slot + 1 }); return; }
+    if (!w.requests.some(r => r.from === p.slot + 1 && r.to === target)) { w.requests.push({ from: p.slot + 1, to: target, t: w.t }); w.events.push({ t: "allyReq", from: p.slot + 1, to: target }); }
+  }
+  function acceptAlliance(w, a, b) { if (w.allyWarned) delete w.allyWarned[akey(a, b)]; w.alliances.add(akey(a, b)); w.requests = w.requests.filter(r => !(r.from === a && r.to === b) && !(r.from === b && r.to === a)); w.events.push({ t: "allied", a, b }); w.allyT = w.allyT || {}; w.allyT[akey(a, b)] = w.t + T.allianceSeconds; }
+  function breakAlliance(w, a, b, why) { if (!allied(w, a, b)) return; w.alliances.delete(akey(a, b)); w.events.push({ t: "betray", a, b, why }); if (why === "betray") { const p = w.players.find(q => q.slot + 1 === a); if (p) p.traitor = w.t + 60; } }
+  const colorOf = (w, p) => COLORS[p.ci];
+  function resetRound(w, seed, opts = {}) {
+    const f = create(seed, opts);
+    Object.assign(w, { seed, mode: f.mode, map: f.map, draw: f.draw, disabled: f.disabled, terrain: f.terrain, owner: f.owner, cells: f.cells, alliances: new Set(), requests: [], attacks: [], boats: [], nukes: [], buildings: [], ships: [], trains: [], bid: 1, phase: "countdown", countdown: 3, time: f.time, t: 0, dirty: [], tdirty: [], events: [], results: null });
+    w.players.forEach((p, i) => { p.slot = i; });
+    if (opts.bots) w.players.forEach(p => { if (p.bot) assignBot(p, opts.bots); });
+    const order = [...w.players].sort(() => Math.random() - 0.5); const used = new Set();
+    for (const p of order) { p.ci = -1; if (p.pref >= 0 && !used.has(p.pref)) { p.ci = p.pref; used.add(p.pref); } }
+    for (const p of order) if (p.ci < 0) { const free = COLORS.map((_, i) => i).filter(i => !used.has(i)); p.ci = free[Math.floor(Math.random() * free.length)]; used.add(p.ci); }
+    w.players.forEach(p => Object.assign(p, { troops: 30, gold: T.startGold, work: 0.7, spawned: false, alive: true, out: 0, input: [], ai: {}, kills: 0, peak: 0, spawnAt: null }));
+  }
+  function setOwner(w, i, o) { const prev = w.owner[i]; if (prev === o) return; w.owner[i] = o; w.cells[prev]--; w.cells[o]++; w.dirty.push((i << 4) | o); const b = w.buildings.find(b => b.cell === i); if (b && b.owner !== o) { removeBuilding(w, b, "captured"); } }
+  function paint(w, cellsList, val) { for (const i of cellsList) { if (i < 0 || i >= N || w.terrain[i] === val) continue; w.terrain[i] = val; w.tdirty.push((i << 1) | val); } }
+  const isCoast = (w, i) => { let c = false; N4(i, j => { if (!w.terrain[j]) c = true; }); return c; };
+  const has = (w, p, type) => w.buildings.some(b => b.owner === p.slot + 1 && b.type === type);
+  const enabled = (w, type) => !w.disabled.has(type);
+  function removeBuilding(w, b, why) { w.buildings = w.buildings.filter(x => x !== b); w.events.push({ t: "bdestroy", id: b.id, cell: b.cell, type: b.type, why }); }
+
+  // ---------- krok
+  function step(w, dt) {
+    w.events.length = 0;
+    if (w.phase === "countdown") { const b = Math.ceil(w.countdown); w.countdown -= dt; if (Math.ceil(w.countdown) !== b && w.countdown > 0) w.events.push({ t: "count", n: Math.ceil(w.countdown) }); if (w.countdown <= 0) { w.phase = w.draw ? "draw" : "spawn"; w.countdown = w.draw ? T.drawSeconds : T.spawnSeconds; w.events.push({ t: w.draw ? "drawStart" : "spawnStart" }); } return; }
+    if (w.phase === "draw") { w.countdown -= dt; for (const p of w.players.filter(q => q.bot).slice(0, 6)) botDraw(w, p, dt); if (w.countdown <= 0) { ensureLand(w); w.phase = "spawn"; w.countdown = T.spawnSeconds; w.events.push({ t: "spawnStart" }); } return; }
+    if (w.phase === "spawn") { w.countdown -= dt; for (const p of w.players) if (!p.spawned && (p.bot || w.countdown <= 0)) doSpawn(w, p, p.spawnAt ?? randomLand(w)); if (w.players.every(p => p.spawned) || w.countdown <= 0) { w.phase = "play"; w.events.push({ t: "go" }); } return; }
+    if (w.phase !== "play") return;
+    w.t += dt; w.time -= dt;
+    if (w.allyT) for (const k of Object.keys(w.allyT)) { if (w.allyT[k] < w.t && w.alliances.has(k)) { w.alliances.delete(k); delete w.allyT[k]; const [a, b] = k.split("|").map(Number); w.events.push({ t: "allyEnd", a, b }); } else if (w.allyT[k] - w.t < 60 && !w.allyWarned?.[k]) { w.allyWarned = w.allyWarned || {}; w.allyWarned[k] = true; const [a, b] = k.split("|").map(Number); w.events.push({ t: "allyExpiring", a, b }); } }
+    w.requests = w.requests.filter(r => w.t - r.t < 30);
+    for (const p of w.players) {
+      if (!p.alive) continue;
+      const c = w.cells[p.slot + 1];
+      if (c === 0) { p.alive = false; p.out = w.t; w.events.push({ t: "out", id: p.id }); for (const b of w.buildings.filter(b => b.owner === p.slot + 1)) removeBuilding(w, b, "out"); continue; }
+      const cities = w.buildings.filter(b => b.owner === p.slot + 1 && b.type === "city").reduce((a, b) => a + (b.lvl || 1), 0);
+      const max = T.maxBase + c * T.maxPerCell + cities * U.city.troopCap;
+      const tr = p.work;   // podíl populace ve vojsku (zbytek = dělníci -> zlato)
+      p.troops = Math.min(max, p.troops + (T.growBase + c * T.growPerCell + cities * U.city.grow) * (tr / 0.7) * dt * (p.troops < max * 0.5 ? 1.2 : 0.7));
+      p.gold += (T.goldBase + c * T.goldPerCell + c * T.workerGold * (1 - tr)) * dt;
+      p.max = max; p.peak = Math.max(p.peak, c); p.growRate = (T.growBase + c * T.growPerCell + cities * U.city.grow) * (tr / 0.7);
+      if (p.bot) botThink(w, p, dt);
+      while (p.input.length) { const a = p.input.shift(); doAction(w, p, a); }
+    }
+    stepAttacks(w, dt); stepBoats(w, dt); stepNukes(w, dt); stepWarships(w, dt); stepTrade(w, dt); stepTrains(w, dt);
+    const alive = w.players.filter(p => p.alive);
+    const land = w.terrain.reduce((a, b) => a + b, 0) || 1;
+    const leader = [...alive].sort((a, b) => w.cells[b.slot + 1] - w.cells[a.slot + 1])[0];
+    if (w.time <= 0 || alive.length <= 1 || (leader && w.cells[leader.slot + 1] / land >= T.winShare)) { w.phase = "end"; w.events.push({ t: "end" }); w.results = results(w); }
+  }
+  function ensureLand(w) { if (w.terrain.reduce((a, b) => a + b, 0) < 12000) { const g = genTerrain(w.seed, "random"); for (let i = 0; i < N; i++) if (!w.terrain[i] && g[i]) { w.terrain[i] = 1; w.tdirty.push((i << 1) | 1); } } }
+  function randomLand(w) { for (let k = 0; k < 800; k++) { const i = Math.floor(Math.random() * N); if (w.terrain[i] && !w.owner[i]) { let free = 0; for (let y = -3; y <= 3; y++) for (let x = -3; x <= 3; x++) { const xx = cx(i) + x, yy = cy(i) + y; if (xx >= 0 && yy >= 0 && xx < GW && yy < GH && w.terrain[idx(xx, yy)] && !w.owner[idx(xx, yy)]) free++; } if (free >= 30) return i; } } for (let i = 0; i < N; i++) if (w.terrain[i] && !w.owner[i]) return i; return 0; }
+  function doSpawn(w, p, cell) {
+    if (p.spawned) return; if (!w.terrain[cell] || w.owner[cell]) cell = randomLand(w);
+    for (let y = -5; y <= 5; y++) for (let x = -5; x <= 5; x++) { const xx = cx(cell) + x, yy = cy(cell) + y; if (xx < 0 || yy < 0 || xx >= GW || yy >= GH) continue; const i = idx(xx, yy); if (x * x + y * y <= 25 && w.terrain[i] && !w.owner[i]) setOwner(w, i, p.slot + 1); }
+    p.spawned = true; w.events.push({ t: "spawn", id: p.id, cell });
+  }
+
+  // ---------- akce
+  function doAction(w, p, a) {
+    if (a.k === "work") p.work = Math.max(0.2, Math.min(1, a.v));
+    else if (a.k === "move") { const s = w.buildings.find(b => b.id === a.id && b.owner === p.slot + 1 && b.type === "warship"); if (s && !w.terrain[a.cell]) { s.tx = cx(a.cell); s.ty = cy(a.cell); s.moving = true; } }
+    else if (a.k === "ally") requestAlliance(w, p, w.owner[a.cell]);
+    else if (a.k === "allyAccept") { const r = w.requests.find(r => r.to === p.slot + 1 && r.from === a.from); if (r) acceptAlliance(w, r.from, r.to); }
+    else if (a.k === "allyReject") { w.requests = w.requests.filter(r => !(r.to === p.slot + 1 && r.from === a.from)); w.events.push({ t: "allyReject", from: p.slot + 1, to: a.from }); }
+    else if (a.k === "attack") launch(w, p, a.cell, a.ratio);
+    else if (a.k === "boat") boat(w, p, a.cell, a.ratio);
+    else if (a.k === "build") build(w, p, a.type, a.cell);
+    else if (a.k === "nuke") nuke(w, p, a.type, a.cell);
+  }
+  // je pole spojené po souši s mým územím? (BFS po zemi, přes cizí i neutrální pole)
+  const visitBuf = new Int32Array(N), queue = new Int32Array(N); let visitGen = 0;
+  function reachable(w, me, cell) {
+    if (!w.terrain[cell]) return false;
+    visitGen++; let qh = 0, qt = 0; queue[qt++] = cell; visitBuf[cell] = visitGen;
+    while (qh < qt) { const i = queue[qh++]; if (w.owner[i] === me) return true; N4(i, j => { if (visitBuf[j] !== visitGen && w.terrain[j]) { visitBuf[j] = visitGen; queue[qt++] = j; } }); }
+    return false;
+  }
+  function launch(w, p, cell, ratio, force) {
+    if (cell < 0 || cell >= N || !w.terrain[cell]) return;
+    const me = p.slot + 1, target = w.owner[cell];
+    if (target === me) return;
+    if (!force && !reachable(w, me, cell)) { w.events.push({ t: "noAdj", id: p.id }); return; }
+    if (target && allied(w, me, target)) breakAlliance(w, me, target, "betray");
+    const troops = force ? ratio : Math.floor(p.troops * Math.max(0.05, Math.min(1, ratio)));
+    if (troops < 3) return;
+    if (!force) p.troops -= troops;
+    const ex = w.attacks.find(a => a.from === me && a.to === target);
+    if (ex) { ex.troops += troops; ex.cell = cell; return; }
+    w.attacks.push({ from: me, to: target, troops, acc: 0, cell });
+    w.events.push({ t: "attack", id: p.id, to: target, troops, cell });
+  }
+  function stepAttacks(w, dt) {
+    for (let k = w.attacks.length - 1; k >= 0; k--) {
+      const a = w.attacks[k];
+      const att = w.players.find(p => p.slot + 1 === a.from), def = a.to ? w.players.find(p => p.slot + 1 === a.to) : null;
+      if (!att || !att.alive || (a.to && (!def || !def.alive))) { if (att) att.troops += a.troops; w.attacks.splice(k, 1); continue; }
+      const defPerCell = def ? def.troops / Math.max(1, w.cells[a.to]) : 0;
+      const baseCost = a.to ? T.costEnemyBase + defPerCell * 1.2 : T.costNeutral;
+      const speed = T.attackSpeed * (1 + Math.log10(Math.max(1, a.troops)) * 0.6);
+      a.acc += speed * dt;
+      // hranice cíle u mého území: plný sken jen občas, jinak inkrementálně
+      a.scanT = (a.scanT || 0) - dt;
+      if (!a.front || a.scanT <= 0) { a.scanT = 1.5; a.front = []; for (let i = 0; i < N; i++) { if (w.owner[i] !== a.to || !w.terrain[i]) continue; let adj = false; N4(i, j => { if (w.owner[j] === a.from) adj = true; }); if (adj) a.front.push(i); } a.front.sort((i, j) => dist(i, a.cell) - dist(j, a.cell)); }
+      const front = a.front;
+      if (!front.length) { att.troops += a.troops; w.attacks.splice(k, 1); continue; }
+      const posts = def ? w.buildings.filter(b => b.owner === a.to && b.type === "defense") : [];
+      const traitorMult = def && def.traitor > w.t ? 0.5 : 1;
+      let took = 0, fi = 0;
+      while (a.acc >= 1 && fi < front.length) {
+        const i = front[fi++];
+        const cost = baseCost * traitorMult * (posts.some(b => dist(b.cell, i) <= U.defense.radius + ((b.lvl || 1) - 1) * 3) ? U.defense.mult : 1);
+        if (a.troops < cost) break;
+        setOwner(w, i, a.from); a.troops -= cost; a.acc -= 1; took++;
+        if (def) def.troops = Math.max(0, def.troops - cost * 0.5);
+        N4(i, j => { if (w.terrain[j] && w.owner[j] === a.to && !front.includes(j)) front.push(j); });
+      }
+      if (fi) a.front = front.slice(fi).filter(i => w.owner[i] === a.to);
+      if (took) w.events.push({ t: "took", from: a.from, n: took });
+      if (a.troops < baseCost) { att.troops += Math.max(0, a.troops); w.attacks.splice(k, 1); }
+      if (def && w.cells[a.to] === 0) att.kills++;
+    }
+  }
+  // loď: výsadek přes vodu (potřebuje přístav)
+  function boat(w, p, cell, ratio) {
+    if (!enabled(w, "port") || !has(w, p, "port")) { w.events.push({ t: "needPort", id: p.id }); return; }
+    if (cell < 0 || !w.terrain[cell] || w.owner[cell] === p.slot + 1) return;
+    const troops = Math.floor(p.troops * Math.max(0.05, Math.min(1, ratio))); if (troops < 5) return;
+    // nejbližší přístav
+    const ports = w.buildings.filter(b => b.owner === p.slot + 1 && b.type === "port").sort((a, b) => dist(a.cell, cell) - dist(b.cell, cell));
+    const from = ports[0].cell; p.troops -= troops;
+    w.boats.push({ id: w.bid++, from: p.slot + 1, x: cx(from), y: cy(from), tx: cx(cell), ty: cy(cell), troops, target: cell });
+    w.events.push({ t: "boat", id: p.id, cell });
+  }
+  function stepBoats(w, dt) {
+    for (let k = w.boats.length - 1; k >= 0; k--) {
+      const b = w.boats[k], dx = b.tx - b.x, dy = b.ty - b.y, d = Math.hypot(dx, dy);
+      const att = w.players.find(p => p.slot + 1 === b.from); if (!att || !att.alive) { w.boats.splice(k, 1); continue; }
+      if (d <= 1.5) {
+        // vylodění: zabere cílové pole + sousedy, zbytek pokračuje jako útok
+        const target = w.owner[b.target]; let cost = 0;
+        const cellsToTake = [b.target]; N4(b.target, j => { if (w.terrain[j] && w.owner[j] !== b.from) cellsToTake.push(j); });
+        for (const i of cellsToTake) { if (b.troops < 2) break; if (w.owner[i] === b.from) continue; setOwner(w, i, b.from); b.troops -= 2; cost += 2; }
+        w.events.push({ t: "landing", from: b.from, cell: b.target });
+        if (b.troops > 3) launch(w, att, b.target, b.troops, true);
+        w.boats.splice(k, 1); continue;
+      }
+      const sp = T.boatSpeed * dt / d; b.x += dx * sp; b.y += dy * sp;
+      // válečná loď v dosahu potopí loď
+      const ws = w.buildings.find(s => s.type === "warship" && s.owner !== b.from && Math.hypot(cx(s.cell) - b.x, cy(s.cell) - b.y) <= U.warship.radius);
+      if (ws) { w.events.push({ t: "sunk", x: b.x, y: b.y, from: b.from }); w.boats.splice(k, 1); }
+    }
+  }
+  // obchodní lodě: přístav vysílá lodě k cizím přístavům, zlato podle vzdálenosti oběma stranám
+  function stepTrade(w, dt) {
+    const ports = w.buildings.filter(b => b.type === "port");
+    for (const port of ports) {
+      port.tacc = (port.tacc || 0) + dt; if (port.tacc < T.tradeEvery / Math.sqrt(port.lvl || 1)) continue; port.tacc = 0;
+      const foreign = ports.filter(q => q.owner !== port.owner); if (!foreign.length) continue;
+      foreign.sort((a, b) => dist(a.cell, port.cell) - dist(b.cell, port.cell));
+      const to = foreign[Math.random() < 0.5 ? 0 : Math.floor(Math.random() * foreign.length)];
+      w.ships.push({ id: w.bid++, owner: port.owner, x: cx(port.cell), y: cy(port.cell), tx: cx(to.cell), ty: cy(to.cell), to: to.owner, gold: Math.round(20 + dist(port.cell, to.cell) * T.tradeGold) });
+    }
+    for (let k = w.ships.length - 1; k >= 0; k--) {
+      const s = w.ships[k], dx = s.tx - s.x, dy = s.ty - s.y, d = Math.hypot(dx, dy);
+      if (d < 1.5) { const a = w.players.find(p => p.slot + 1 === s.owner), b = w.players.find(p => p.slot + 1 === s.to); if (a) a.gold += s.gold; if (b && b.alive) b.gold += s.gold * 0.6; w.events.push({ t: "trade", owner: s.owner, to: s.to, gold: s.gold, x: s.tx, y: s.ty }); w.ships.splice(k, 1); continue; }
+      const sp = T.tradeSpeed * dt / d; s.x += dx * sp; s.y += dy * sp;
+      const ws = w.buildings.find(b => b.type === "warship" && b.owner !== s.owner && Math.hypot(cx(b.cell) - s.x, cy(b.cell) - s.y) <= U.warship.radius);
+      if (ws) { const cap = w.players.find(p => p.slot + 1 === ws.owner); if (cap) cap.gold += s.gold; w.events.push({ t: "captured", by: ws.owner, from: s.owner, gold: s.gold, x: s.x, y: s.y }); w.ships.splice(k, 1); }
+    }
+  }
+  // vlaky: továrna posílá vlaky do vlastních měst a přístavů v dosahu, ty platí zlato
+  function stepTrains(w, dt) {
+    for (const f of w.buildings) {
+      if (f.type !== "factory") continue; f.tacc = (f.tacc || 0) + dt; if (f.tacc < T.trainEvery / Math.sqrt(f.lvl || 1)) continue; f.tacc = 0;
+      const stops = w.buildings.filter(b => b.owner === f.owner && (b.type === "city" || b.type === "port") && dist(b.cell, f.cell) <= T.trainRange);
+      if (!stops.length) continue;
+      const to = stops[Math.floor(Math.random() * stops.length)];
+      w.trains.push({ id: w.bid++, owner: f.owner, x: cx(f.cell), y: cy(f.cell), tx: cx(to.cell), ty: cy(to.cell), gold: Math.round(U[to.type].trainGold + dist(f.cell, to.cell) * T.trainGold) });
+    }
+    for (let k = w.trains.length - 1; k >= 0; k--) {
+      const s = w.trains[k], dx = s.tx - s.x, dy = s.ty - s.y, d = Math.hypot(dx, dy);
+      if (d < 1.5) { const a = w.players.find(p => p.slot + 1 === s.owner); if (a) a.gold += s.gold; w.events.push({ t: "train", owner: s.owner, gold: s.gold, x: s.tx, y: s.ty }); w.trains.splice(k, 1); continue; }
+      const sp = T.trainSpeed * dt / d; s.x += dx * sp; s.y += dy * sp;
+      if (w.owner[idx(Math.round(s.x), Math.round(s.y))] !== s.owner) { w.trains.splice(k, 1); }   // vlak jede jen po vlastním území
+    }
+  }
+  // stavby
+  function build(w, p, type, cell) {
+    const u = U[type]; if (!u || !enabled(w, type)) return;
+    const me = p.slot + 1;
+    // vylepšení: stavba stejného typu na existující budově (cena se zdvojnásobuje s úrovní)
+    const ex = w.buildings.find(b => b.owner === me && b.type === type && type !== "warship" && dist(b.cell, cell) <= 2);
+    if (ex) { const cost = u.cost * Math.pow(2, ex.lvl || 1); if (p.gold < cost) { w.events.push({ t: "noGold", id: p.id }); return; } p.gold -= cost; ex.lvl = (ex.lvl || 1) + 1; w.events.push({ t: "upgraded", id: p.id, type, cell: ex.cell, lvl: ex.lvl }); return; }
+    if (p.gold < u.cost) { w.events.push({ t: "noGold", id: p.id }); return; }
+    if (type === "warship") { if (!has(w, p, "port")) { w.events.push({ t: "needPort", id: p.id }); return; } if (w.terrain[cell]) return; const port = w.buildings.filter(b => b.owner === me && b.type === "port").sort((a, b) => dist(a.cell, cell) - dist(b.cell, cell))[0]; p.gold -= u.cost; w.buildings.push({ id: w.bid++, type, cell: port.cell, owner: me, lvl: 1, x: cx(port.cell), y: cy(port.cell), tx: cx(cell), ty: cy(cell), moving: true }); w.events.push({ t: "built", id: p.id, type, cell }); return; }
+    else {
+      if (w.owner[cell] !== me) return;
+      if (type === "port") { let best = -1, bd = 1e9; for (let y = -7; y <= 7; y++) for (let x = -7; x <= 7; x++) { const xx = cx(cell) + x, yy = cy(cell) + y; if (xx < 0 || yy < 0 || xx >= GW || yy >= GH) continue; const i = idx(xx, yy); if (w.owner[i] === me && isCoast(w, i) && !w.buildings.some(b => b.cell === i)) { const d = Math.hypot(x, y); if (d < bd) { bd = d; best = i; } } } if (best < 0) { w.events.push({ t: "needCoast", id: p.id }); return; } cell = best; }
+      if (w.buildings.some(b => b.cell === cell || (b.type !== "port" && type !== "port" && dist(b.cell, cell) < 2))) { w.events.push({ t: "occupied", id: p.id }); return; }
+    }
+    p.gold -= u.cost;
+    w.buildings.push({ id: w.bid++, type, cell, owner: me, lvl: 1 });
+    w.events.push({ t: "built", id: p.id, type, cell });
+  }
+  function stepWarships(w, dt) {
+    for (const s of w.buildings) {
+      if (s.type !== "warship") continue;
+      if (s.moving) { const dx = s.tx - s.x, dy = s.ty - s.y, d = Math.hypot(dx, dy); if (d < 1) { s.moving = false; s.x = s.tx; s.y = s.ty; } else { const sp = T.boatSpeed * 1.2 * dt / d; s.x += dx * sp; s.y += dy * sp; } s.cell = idx(Math.round(s.x), Math.round(s.y)); continue; }
+      s.acc = (s.acc || 0) + dt; if (s.acc < 2) continue; s.acc = 0;
+      // ostřeluje pobřežní pole nepřátel v dosahu -> neutrální
+      let hit = 0;
+      for (let y = -U.warship.radius; y <= U.warship.radius; y++) for (let x = -U.warship.radius; x <= U.warship.radius; x++) { const xx = cx(s.cell) + x, yy = cy(s.cell) + y; if (xx < 0 || yy < 0 || xx >= GW || yy >= GH || hit >= 3) continue; const i = idx(xx, yy); if (w.terrain[i] && w.owner[i] && w.owner[i] !== s.owner && isCoast(w, i) && Math.hypot(x, y) <= U.warship.radius) { setOwner(w, i, 0); hit++; } }
+      if (hit) w.events.push({ t: "shell", cell: s.cell });
+    }
+  }
+  // jaderné zbraně
+  function nuke(w, p, type, cell) {
+    const u = U[type]; if (!u || !u.radius || !enabled(w, type)) return;
+    if (!has(w, p, "silo")) { w.events.push({ t: "needSilo", id: p.id }); return; }
+    if (p.gold < u.cost) { w.events.push({ t: "noGold", id: p.id }); return; }
+    if (cell < 0) return;
+    p.gold -= u.cost;
+    const silo = w.buildings.filter(b => b.owner === p.slot + 1 && b.type === "silo").sort((a, b) => dist(a.cell, cell) - dist(b.cell, cell))[0];
+    const targets = type === "mirv" ? Array.from({ length: u.count }, () => idx(Math.max(0, Math.min(GW - 1, cx(cell) + Math.round((Math.random() - 0.5) * u.spread * 2))), Math.max(0, Math.min(GH - 1, cy(cell) + Math.round((Math.random() - 0.5) * u.spread * 2))))) : [cell];
+    for (const tcell of targets) w.nukes.push({ id: w.bid++, type, from: p.slot + 1, fromCell: silo.cell, cell: tcell, t: T.nukeFlight, radius: u.radius });
+    w.events.push({ t: "nukeLaunch", id: p.id, type, cell });
+  }
+  function stepNukes(w, dt) {
+    for (let k = w.nukes.length - 1; k >= 0; k--) {
+      const n = w.nukes[k]; n.t -= dt; if (n.t > 0) continue;
+      w.nukes.splice(k, 1);
+      // SAM obránce v dosahu může sestřelit
+      const sam = w.buildings.find(b => b.type === "sam" && b.owner !== n.from && dist(b.cell, n.cell) <= U.sam.radius + ((b.lvl || 1) - 1) * 4);
+      if (sam && Math.random() < Math.min(0.95, U.sam.chance + ((sam.lvl || 1) - 1) * 0.1)) { w.events.push({ t: "intercept", cell: n.cell, by: sam.owner }); continue; }
+      const lost = new Int32Array(9);
+      for (let y = -n.radius; y <= n.radius; y++) for (let x = -n.radius; x <= n.radius; x++) { const xx = cx(n.cell) + x, yy = cy(n.cell) + y; if (xx < 0 || yy < 0 || xx >= GW || yy >= GH || Math.hypot(x, y) > n.radius) continue; const i = idx(xx, yy); if (w.owner[i]) { lost[w.owner[i]]++; setOwner(w, i, 0); } }
+      for (const p of w.players) { const l = lost[p.slot + 1]; if (l) p.troops = Math.max(0, p.troops - l * 3); }
+      w.events.push({ t: "boom", cell: n.cell, radius: n.radius, type: n.type });
+    }
+  }
+
+  // ---------- boti
+  function botDraw(w, p, dt) { const ai = p.ai; ai.t = (ai.t || 0) - dt; if (ai.t > 0) return; ai.t = 1.4 + Math.random(); const val = Math.random() < 0.75 ? 1 : 0; const bx = Math.floor(Math.random() * GW), by = Math.floor(Math.random() * GH), r = 16 + Math.random() * 24, list = []; for (let y = -r; y <= r; y++) for (let x = -r; x <= r; x++) { const xx = bx + x | 0, yy = by + y | 0; if (xx < 1 || yy < 1 || xx >= GW - 1 || yy >= GH - 1 || x * x + y * y > r * r) continue; list.push(idx(xx, yy)); } paint(w, list, val); }
+  function botThink(w, p, dt) {
+    const ai = p.ai, sk = p.skill; ai.t = (ai.t || 0) - dt; if (ai.t > 0) return;
+    ai.t = 1.2 + (1 - sk) * 3 + Math.random();
+    const me = p.slot + 1, max = p.max || 200, mine = [];
+    for (let i = 0; i < N; i++) if (w.owner[i] === me) mine.push(i);
+    // stavby: město, továrna, přístav u pobřeží, silo/SAM/obrana když je zlata dost
+    const own = (t) => w.buildings.filter(b => b.owner === me && b.type === t).length;
+    const pick = () => mine[Math.floor(Math.random() * mine.length)];
+    if (mine.length > 120 && Math.random() < 0.3 + sk * 0.5) {
+      if (p.gold >= U.city.cost && own("city") < 1 + mine.length / 300 && enabled(w, "city")) p.input.push({ k: "build", type: "city", cell: pick() });
+      else if (p.gold >= U.city.cost * 2 && own("city") && Math.random() < 0.3 && enabled(w, "city")) { const c = w.buildings.find(b => b.owner === me && b.type === "city"); p.input.push({ k: "build", type: "city", cell: c.cell }); }
+      else if (p.gold >= U.factory.cost && own("factory") < 1 + mine.length / 600 && (own("city") || own("port")) && enabled(w, "factory")) p.input.push({ k: "build", type: "factory", cell: pick() });
+      else if (p.gold >= U.port.cost && !own("port") && enabled(w, "port")) { const c = mine.filter(i => isCoast(w, i)); if (c.length) p.input.push({ k: "build", type: "port", cell: c[Math.floor(Math.random() * c.length)] }); }
+      else if (p.gold >= U.defense.cost && own("defense") < 2 && sk > 0.4 && enabled(w, "defense")) p.input.push({ k: "build", type: "defense", cell: pick() });
+      else if (p.gold >= U.silo.cost + 300 && !own("silo") && sk > 0.5 && enabled(w, "silo")) p.input.push({ k: "build", type: "silo", cell: pick() });
+      else if (p.gold >= U.sam.cost && !own("sam") && sk > 0.6 && enabled(w, "sam")) p.input.push({ k: "build", type: "sam", cell: pick() });
+    }
+    // atomovka na největšího soupeře
+    if (own("silo") && p.gold >= U.atom.cost + 100 && Math.random() < 0.06 * sk && enabled(w, "atom")) { const enemies = w.players.filter(o => o !== p && o.alive).sort((a, b) => w.cells[b.slot + 1] - w.cells[a.slot + 1]); if (enemies[0]) { const cells = []; for (let i = 0; i < N; i += 7) if (w.owner[i] === enemies[0].slot + 1) cells.push(i); if (cells.length) p.input.push({ k: "nuke", type: "atom", cell: cells[Math.floor(Math.random() * cells.length)] }); } }
+    if (p.troops < max * (0.25 + (1 - sk) * 0.3)) return;
+    const neigh = new Map();
+    for (const i of mine) N4(i, j => { if (!w.terrain[j] || w.owner[j] === me) return; const o = w.owner[j]; if (o && allied(w, me, o)) return; if (!neigh.has(o)) neigh.set(o, { n: 0, cell: j }); neigh.get(o).n++; });
+    if (sk > 0.5 && Math.random() < 0.05) { const strong = w.players.filter(o => o !== p && o.alive && w.cells[o.slot + 1] > w.cells[me] * 1.5 && !allied(w, me, o.slot + 1)); if (strong.length) { const o = strong[Math.floor(Math.random() * strong.length)]; if (!o.bot) requestAlliance(w, p, o.slot + 1); } }
+    if (!neigh.size) {
+      // nic k dobytí po souši -> loď na nejbližší cizí/neutrální zemi
+      if (own("port") && Math.random() < 0.6) { let best = -1, bd = 1e9; const from = mine[0]; for (let i = 0; i < N; i += 3) if (w.terrain[i] && w.owner[i] !== me) { const d = dist(i, from); if (d < bd) { bd = d; best = i; } } if (best >= 0) p.input.push({ k: "boat", cell: best, ratio: 0.5 }); }
+      return;
+    }
+    let pk = null;
+    if (neigh.has(0) && (Math.random() < 0.7 || neigh.size === 1)) pk = { o: 0, ...neigh.get(0), ratio: 0.35 + Math.random() * 0.3 };
+    else {
+      const cands = [...neigh.entries()].filter(([o]) => o !== 0).map(([o, v]) => { const d = w.players.find(q => q.slot + 1 === o); return { o, ...v, str: d ? d.troops / Math.max(1, w.cells[o]) : 0, tot: d ? d.troops : 0 }; }).sort((a, b) => a.str - b.str);
+      const c = sk > 0.5 ? cands[0] : cands[Math.floor(Math.random() * cands.length)]; if (!c) return;
+      if (sk > 0.4 && c.tot > p.troops * 1.3 && p.troops < max * 0.85) return;
+      pk = { ...c, ratio: p.troops >= max * 0.85 ? 0.9 : 0.5 + sk * 0.3 };
+    }
+    p.input.push({ k: "attack", cell: pk.cell, ratio: pk.ratio });
+  }
+
+  // ---------- výsledky + síť
+  function results(w) {
+    const land = w.terrain.reduce((a, b) => a + b, 0) || 1;
+    const rows = w.players.map(p => ({ id: p.id, name: p.name, color: colorOf(w, p), slot: p.slot, bot: p.bot, cells: w.cells[p.slot + 1], pct: Math.round(1000 * w.cells[p.slot + 1] / land) / 10, alive: p.alive, out: p.out, kills: p.kills }));
+    rows.sort((a, b) => (b.alive ? 1 : 0) - (a.alive ? 1 : 0) || b.cells - a.cells || b.out - a.out);
+    rows.forEach((r, i) => { r.rank = i + 1; r.value = r.pct + " %"; r.own = r.pct; r.coins = r.bot ? 0 : Math.round(10 + Math.min(60, r.pct) + (i === 0 ? 30 : i === 1 ? 12 : 0)); r.win = i === 0; });
+    return rows;
+  }
+  function packPlayers(w) { return w.players.map(p => [p.id, Math.round(p.troops), w.cells[p.slot + 1], p.alive ? 1 : 0, p.spawned ? 1 : 0, Math.round(p.gold), Math.round(p.max || 0), Math.round(p.work * 100), p.traitor > w.t ? 1 : 0]); }
+  function packAlliances(w) { return [...w.alliances]; }
+  function packGrid(arr) { let out = "", prev = arr[0], n = 0; for (let i = 0; i < arr.length; i++) { const v = arr[i]; if (v === prev) n++; else { out += prev + ":" + n + ","; prev = v; n = 1; } } return out + prev + ":" + n; }
+  function unpackGrid(arr, s) { let i = 0; for (const part of s.split(",")) { const [v, n] = part.split(":").map(Number); arr.fill(v, i, i + n); i += n; } }
+  function recount(w) { w.cells.fill(0); for (let i = 0; i < N; i++) w.cells[w.owner[i]]++; }
+  function lobbyInfo(w) { return w.players.map(p => ({ id: p.id, name: p.name, color: colorOf(w, p), ci: p.ci, team: p.team, hat: p.hat, pattern: p.pattern, bot: !!p.bot, skill: p.bot ? p.skill : undefined })); }
+  function assignBot(p, difficulty) { const [a, b] = BOT_SKILL[difficulty] || BOT_SKILL.mix; p.skill = Math.round((a + Math.random() * (b - a)) * 100) / 100; p.ai = {}; }
+  const skillTier = (s) => s < 0.4 ? "easy" : s < 0.75 ? "mid" : "hard";
+  const palette = (w) => w.players.map(p => COLORS[p.ci]);
+  return { reachable, allied, akey, packAlliances, NATIONS, GW, GH, N, COLORS, TEAM_COLORS, MODES, MAPS, UNIT_KEYS, PU_RATE, BOT_SKILL, POWERUPS: {}, create, addPlayer, removePlayer, resetRound, step, results, packPlayers, packGrid, unpackGrid, recount, lobbyInfo, colorOf, assignBot, skillTier, palette, paint, doSpawn, idx, cx, cy, isCoast };
+})();

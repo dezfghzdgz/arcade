@@ -2,55 +2,94 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-  <meta name="theme-color" content="#1F1A3A" />
-  <meta name="description" content="Quick party minigames for 2–8 friends, everyone on their own phone: reflex, tap race, quick math, color match." />
-  <link rel="manifest" href="manifest.webmanifest" /><link rel="icon" href="icon-192.png" /><link rel="apple-touch-icon" href="icon-192.png" />
-  <title>Party</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#160B2E" />
+  <meta name="description" content="Quick games for your phone or a bored moment at school. Solo or with friends over one link." />
+  <title>Arcade</title>
+  <link rel="icon" href="icon-192.png" /><link rel="apple-touch-icon" href="icon-192.png" /><link rel="manifest" href="manifest.webmanifest" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/style.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="hub.css" />
 </head>
 <body>
-  <div id="stage">
-    <a id="btn-hub" class="hub-link" href="../">‹ Arcade</a>
-    <!-- Menu -->
-    <div id="menu" class="screen">
-      <div class="title">Party</div>
-      <p class="tagline" data-i18n="tagline">Quick minigames. Everyone on their own phone. 2–8 players.</p>
-      <input id="name-input" maxlength="12" placeholder="Your name" data-i18n-ph="yourName" autocomplete="off" />
-      <button id="btn-create" class="big" data-i18n="createRoom">Create room</button>
-      <div class="join-row"><input id="code-input" maxlength="4" placeholder="CODE" autocapitalize="characters" autocomplete="off" /><button id="btn-join" data-i18n="joinRoom">Join</button></div>
-      <div class="menu-foot"><button id="btn-sound" class="ghost">Sound: on</button><button id="btn-lang" class="ghost">Čeština</button></div>
+  <header class="top">
+    <a class="brand" href="./">Arcade</a>
+    <nav id="nav">
+      <button id="btn-pass" class="pass hidden"></button>
+      <button id="btn-signin" data-i18n="signIn">Sign in</button>
+      <div id="user-menu" class="user hidden">
+        <button id="btn-user"><span id="user-name">…</span> ▾</button>
+        <div id="user-drop" class="drop hidden">
+          <button data-page="submit" data-i18n="submitGame">Submit a game</button>
+          <button data-page="mine" data-i18n="mySubs">My submissions</button>
+          <button id="btn-admin" class="hidden" data-page="admin" data-i18n="admin">Review queue</button>
+          <button id="btn-signout" data-i18n="signOut">Sign out</button>
+        </div>
+      </div>
+    </nav>
+  </header>
+
+  <main id="page-home" class="page">
+    <h1>Arcade</h1>
+    <p class="sub" data-i18n="sub">Quick games. Solo or with friends over one link.</p>
+    <div id="pass-banner" class="pass-banner hidden"></div>
+    <div id="install" class="install"><span>📲 <b data-i18n="installT">Install Arcade</b> · <span data-i18n="installD">works offline, no wifi needed for solo games</span></span><div class="acts"><button id="btn-install" class="pass hidden" data-i18n="installBtn">Install app</button><button id="btn-offline" data-i18n="offlineBtn">Save games for offline</button><a class="btn-like" href="desktop/README.md" target="_blank" rel="noopener" data-i18n="desktopBtn">Download for PC</a></div></div>
+    <div class="cols"><div class="col"><h2 class="colh solo-h" data-i18n="soloH">Offline · solo</h2><div id="games-solo" class="grid one"></div></div><div class="col"><h2 class="colh friends-h" data-i18n="friendsH">Online · with friends</h2><div id="games-friends" class="grid one"></div></div></div>
+    <div id="games" class="grid hidden"></div>
+    <h2 class="section hidden" id="community-h" data-i18n="community">From the community</h2>
+    <div id="community" class="grid"></div>
+    <div class="foot">
+      <a class="kine" id="kine-link" href="#" target="_blank" rel="noopener"><span class="k">K</span><span><span data-i18n="kine">Also by us:</span> <b>Kine</b> <span data-i18n="kineDesc">– videos, live, creators</span></span></a>
+      <button id="lang">Čeština</button>
     </div>
-    <!-- Lobby -->
-    <div id="lobby" class="screen panel hidden">
-      <div class="panel-head"><button id="btn-leave" class="back">‹</button><h2 data-i18n="lobby">Room</h2><div id="lobby-kind" class="kind"></div></div>
-      <div class="code-box"><div id="lobby-code" class="code">ABCD</div><div class="code-actions"><button id="btn-copy" data-i18n="copyLink">Copy link</button><button id="btn-share-room" data-i18n="share">Share</button></div></div>
-      <div class="set-row"><span data-i18n="speed">Timer</span><div id="speed-btns" class="seg"></div></div>
-      <div id="lobby-count" class="lb-status"></div>
-      <div id="lobby-list" class="lobby-list"></div>
-      <button id="btn-start" class="big hidden" data-i18n="start">Start</button>
-      <div id="lobby-wait" class="lb-status hidden" data-i18n="waitingHost">Waiting for the host to start…</div>
+  </main>
+
+  <main id="page-submit" class="page hidden">
+    <button class="back" data-page="home">‹ Arcade</button>
+    <h2 data-i18n="submitGame">Submit a game</h2>
+    <p class="sub" data-i18n="submitHelp">Host your HTML5 game anywhere (Vercel, GitHub Pages, itch.io), paste the link. We play it, and if it fits, it appears on the Arcade with your name.</p>
+    <form id="submit-form" class="form">
+      <label><span data-i18n="fTitle">Title</span><input name="title" maxlength="40" required /></label>
+      <label><span data-i18n="fDesc">One-line description</span><input name="description" maxlength="120" required /></label>
+      <label><span data-i18n="fUrl">Play URL (https://…)</span><input name="url" type="url" required /></label>
+      <label><span data-i18n="fIcon">Icon URL (optional, square PNG)</span><input name="icon_url" type="url" /></label>
+      <label><span data-i18n="fKind">Type</span><select name="kind"><option value="solo">Solo</option><option value="friends">With friends</option></select></label>
+      <label><span data-i18n="fNote">Note for reviewers (optional)</span><textarea name="note" maxlength="500"></textarea></label>
+      <button class="big" type="submit" data-i18n="send">Send for review</button>
+    </form>
+  </main>
+
+  <main id="page-mine" class="page hidden">
+    <button class="back" data-page="home">‹ Arcade</button>
+    <h2 data-i18n="mySubs">My submissions</h2>
+    <div id="mine-list" class="list"></div>
+  </main>
+
+  <main id="page-admin" class="page hidden">
+    <button class="back" data-page="home">‹ Arcade</button>
+    <h2 data-i18n="admin">Review queue</h2>
+    <div id="admin-list" class="list"></div>
+  </main>
+
+  <div id="auth" class="modal hidden">
+    <div class="box">
+      <button class="close" id="auth-close">×</button>
+      <h3 id="auth-title" data-i18n="signIn">Sign in</h3>
+      <form id="auth-form" class="form">
+        <label id="auth-name-row" class="hidden"><span data-i18n="fName">Display name</span><input name="name" maxlength="20" /></label>
+        <label><span>E-mail</span><input name="email" type="email" required autocomplete="email" /></label>
+        <label><span data-i18n="fPass">Password</span><input name="password" type="password" minlength="6" required autocomplete="current-password" /></label>
+        <div id="auth-err" class="err"></div>
+        <button class="big" type="submit" id="auth-submit" data-i18n="signIn">Sign in</button>
+      </form>
+      <button id="auth-toggle" class="ghost"></button>
     </div>
-    <!-- Hra -->
-    <div id="game" class="screen panel hidden">
-      <div class="game-top"><div id="g-step" class="kind"></div><div id="g-timer" class="timer">0</div></div>
-      <h2 id="g-title"></h2><p id="g-hint" class="lb-status"></p>
-      <div id="g-area" class="g-area"></div>
-      <div id="g-score" class="album hidden"></div>
-    </div>
-    <!-- Konec -->
-    <div id="results" class="screen hidden">
-      <h2 data-i18n="results">That's all!</h2>
-      <button id="btn-again" class="big"></button>
-      <button id="btn-res-menu" data-i18n="backMenu">Menu</button>
-    </div>
-    <div id="banner" class="hidden">ad banner</div>
-    <div id="toast" class="hidden"></div>
   </div>
-  <script src="js/config.js"></script><script src="js/storage.js"></script><script src="js/i18n.js"></script><script src="js/audio.js"></script>
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="config.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-  <script src="js/net.js"></script><script src="js/monetization.js"></script><script src="js/main.js"></script>
+  <script src="hub.js"></script>
+  <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(() => {});</script>
 </body>
 </html>

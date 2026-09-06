@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <meta name="theme-color" content="#160B2E" />
+  <meta name="description" content="Tap, flip, dodge. A simple addictive game." />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icon-192.png" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
+  <title>ZigDash</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div id="stage">
+    <canvas id="game"></canvas>
+
+    <!-- HUD during play -->
+    <div id="hud" class="screen hidden">
+      <div class="hud-row">
+        <div id="hud-score">0</div>
+        <div id="hud-coins"><span class="gem"></span><span id="hud-coins-n">0</span></div>
+      </div>
+      <div id="hud-combo"></div>
+      <div id="hud-fever" class="hidden">FEVER ×<span id="hud-mult">2</span></div>
+    </div>
+
+    <!-- Hlavní menu -->
+    <div id="menu" class="screen">
+      <a id="btn-hub" class="hub-link" href="../">‹ Arcade</a>
+      <div class="title">
+        <div class="title-word">Zig</div>
+        <div class="title-word title-dash">Dash</div>
+      </div>
+      <p class="tagline" data-i18n="tagline">Tap, flip, dodge. How long can you last?</p>
+      <div class="best"><span data-i18n="best">Best</span> <b id="menu-best">0</b></div>
+      <button id="btn-play" class="big" data-i18n="play">Play</button>
+      <div class="menu-row">
+        <button id="btn-leaderboard" data-i18n="leaderboard">Žebříček</button>
+        <button id="btn-shop" data-i18n="shop">Obchod</button>
+      </div>
+      <button id="btn-missions" class="missions-btn"><span data-i18n="missions">Denní úkoly</span> <b id="missions-badge"></b></button>
+      <div class="menu-foot">
+        <div class="menu-toggles">
+          <button id="btn-sound" class="ghost">Zvuk: zap</button>
+          <button id="btn-music" class="ghost">Hudba: zap</button>
+          <button id="btn-vibrate" class="ghost">Vibrace: zap</button>
+          <button id="btn-lang" class="ghost">English</button>
+        </div>
+        <div class="coins-wallet"><span class="gem"></span><span id="menu-coins">0</span></div>
+      </div>
+    </div>
+
+    <!-- Game over -->
+    <div id="over" class="screen hidden">
+      <div class="over-label" data-i18n="crashed">Crashed</div>
+      <div id="over-score" class="over-score">0</div>
+      <div id="over-new" class="over-new hidden" data-i18n="newBest">New best!</div>
+      <div class="over-stats">
+        <span><span data-i18n="best">Best</span> <b id="over-best">0</b></span>
+        <span><span data-i18n="combo">Combo</span> <b id="over-combo">0</b></span>
+        <span><span class="gem"></span><b id="over-coins">0</b></span>
+      </div>
+      <button id="btn-continue" class="big continue">
+        <span data-i18n="continueAd">Continue</span> <small data-i18n="watchAd">watch an ad</small>
+      </button>
+      <button id="btn-retry" class="big" data-i18n="retry">Retry</button>
+      <div class="menu-row">
+        <button id="btn-over-leaderboard" data-i18n="leaderboard">Žebříček</button>
+        <button id="btn-share" data-i18n="share">Sdílet</button>
+        <button id="btn-over-menu" data-i18n="menu">Menu</button>
+      </div>
+      <div id="over-rank" class="over-rank"></div>
+    </div>
+
+    <!-- Žebříček -->
+    <div id="leaderboard" class="screen panel hidden">
+      <div class="panel-head">
+        <button class="back" data-back>‹</button>
+        <h2 data-i18n="leaderboard">Leaderboard</h2>
+      </div>
+      <div class="name-row">
+        <input id="name-input" maxlength="12" placeholder="Your name" data-i18n-ph="yourName" autocomplete="off" />
+        <button id="btn-name-save" data-i18n="save">Save</button>
+      </div>
+      <div id="lb-status" class="lb-status">Loading…</div>
+      <ol id="lb-list" class="lb-list"></ol>
+      <div id="lb-me" class="lb-me hidden"></div>
+    </div>
+
+    <!-- Denní úkoly -->
+    <div id="missions" class="screen panel hidden">
+      <div class="panel-head">
+        <button class="back" data-back>‹</button>
+        <h2 data-i18n="missions">Denní úkoly</h2>
+      </div>
+      <div id="missions-list" class="missions-list"></div>
+      <div id="missions-note" class="lb-status hidden" data-i18n="missionsDone">Vše splněno – zítra budou nové.</div>
+    </div>
+
+    <!-- Obchod -->
+    <div id="shop" class="screen panel hidden">
+      <div class="panel-head">
+        <button class="back" data-back>‹</button>
+        <h2 data-i18n="shop">Shop</h2>
+        <div class="coins-wallet"><span class="gem"></span><span id="shop-coins">0</span></div>
+      </div>
+      <div class="shop-tabs" id="shop-tabs"></div>
+      <div id="shop-grid" class="skin-grid"></div>
+      <div class="shop-section" data-i18n="purchases">Purchases</div>
+      <div class="iap-list">
+        <button class="iap" data-iap="remove_ads">
+          <span data-i18n="removeAds">Remove ads</span><b id="price-remove_ads">€1.99</b>
+        </button>
+        <button class="iap" data-iap="gems_500">
+          <span id="lbl-gems_500">500 gems</span><b id="price-gems_500">€0.99</b>
+        </button>
+        <button class="iap" data-iap="gems_2000">
+          <span id="lbl-gems_2000">2,000 gems</span><b id="price-gems_2000">€2.99</b>
+        </button>
+      </div>
+      <button id="btn-restore" class="ghost" data-i18n="restore">Restore purchases</button>
+      <div id="iap-note" class="iap-note hidden" data-i18n="stripeNote">Payment opens on Stripe and brings you back to the game.</div>
+    </div>
+
+    <!-- Reklamní banner (spodní lišta, na webu jen placeholder) -->
+    <div id="banner" class="hidden" data-i18n="banner">ad banner</div>
+
+    <div id="toast" class="hidden"></div>
+  </div>
+
+  <script src="js/config.js"></script>
+  <script src="js/storage.js"></script>
+  <script src="js/i18n.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/music.js"></script>
+  <script src="js/haptics.js"></script>
+  <script src="js/missions.js"></script>
+  <script src="js/monetization.js"></script>
+  <script src="js/leaderboard.js"></script>
+  <script src="js/game.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
