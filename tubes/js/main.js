@@ -33,17 +33,20 @@
   function animatePour(a, b, c, n) {
     busy = true; const box = $("tubes"), els = box.querySelectorAll(".tube"), ea = els[a], eb = els[b]; if (!ea || !eb) { busy = false; render(); return; }
     const ra = ea.getBoundingClientRect(), rb = eb.getBoundingClientRect(), rbox = box.getBoundingClientRect();
-    const left = rb.left < ra.left; const dx = (rb.left - ra.left) + (left ? -ra.width * 0.55 : ra.width * 0.55), dy = rb.top - ra.top - ra.height * 0.55;
-    ea.classList.add("pouring"); ea.style.transform = `translate(${dx}px, ${dy}px) rotate(${left ? 70 : -70}deg)`;
-    // segmenty ve zdroji zmenšit, v cíli přidat ghost segmenty a nechat je narůst
+    const left = rb.left < ra.left;   // cíl vlevo -> tělo zkumavky míří nahoru doprava
+    // otáčíme kolem hrdla (transform-origin nahoře uprostřed) a hrdlo posadíme těsně nad cílovou zkumavku
+    const mouthX = rb.left + rb.width / 2, mouthY = rb.top - 6;
+    const dx = mouthX - (ra.left + ra.width / 2), dy = mouthY - ra.top;
+    ea.style.transformOrigin = "50% 0"; ea.classList.add("pouring"); ea.style.transform = `translate(${dx}px, ${dy}px) rotate(${left ? -115 : 115}deg)`;
     const srcSegs = [...ea.querySelectorAll(".seg")].slice(-n); const added = []; for (let k = 0; k < n; k++) { const sg = document.createElement("div"); sg.className = "seg ghost"; sg.style.background = COLORS[c]; eb.appendChild(sg); added.push(sg); }
     setTimeout(() => {
-      const st = document.createElement("div"); st.className = "stream"; st.style.background = COLORS[c]; const tipX = left ? rb.left + rb.width * 0.5 : rb.left + rb.width * 0.5; st.style.left = (tipX - rbox.left - 4) + "px"; st.style.top = (rb.top - rbox.top - 14) + "px"; st.style.height = (rb.height - (tubes[b].length) * rb.height * 0.25 + 8) + "px"; box.appendChild(st);
+      // proud: od hrdla dolů k hladině v cíli
+      const fillTop = rb.bottom - (tubes[b].length - n) * rb.height * 0.25;
+      const st = document.createElement("div"); st.className = "stream"; st.style.background = COLORS[c]; st.style.left = (mouthX - rbox.left - 4) + "px"; st.style.top = (mouthY - rbox.top) + "px"; st.style.height = Math.max(8, fillTop - mouthY - 6) + "px"; box.appendChild(st);
       srcSegs.forEach(sg => sg.style.height = "0%"); added.forEach(sg => { sg.classList.remove("ghost"); sg.style.height = "25%"; sg.style.opacity = "1"; }); beep(500 + c * 40, 0.25, "sine", 0.05);
-      setTimeout(() => { st.remove(); ea.style.transform = ""; ea.classList.remove("pouring"); eb.classList.add("wobble"); setTimeout(() => { busy = false; render(); if (tubes.every(isDone)) win(); }, 230); }, 320);
-    }, 230);
+      setTimeout(() => { st.remove(); ea.style.transform = ""; ea.style.transformOrigin = ""; ea.classList.remove("pouring"); eb.classList.add("wobble"); setTimeout(() => { busy = false; render(); if (tubes.every(isDone)) win(); }, 230); }, 340);
+    }, 240);
   }
-  async function win() { beep(880, 0.25); setTimeout(() => beep(1320, 0.3), 100); solved = Math.max(solved, level); set("tb_solved", solved); $("over").classList.remove("hidden"); $("over-title").textContent = L("done"); $("over-score").textContent = "🧪"; $("over-rank").textContent = L("movesIn", moves); const r = await Arc.submit("tubes", solved); if (r) $("over-rank").textContent += " · " + L("rank", r); }
   function render() {
     const box = $("tubes"); box.innerHTML = "";
     tubes.forEach((t, i) => { const d = document.createElement("div"); d.className = "tube" + (i === sel ? " sel" : "") + (t.length === CAP && isDone(t) ? " done" : ""); t.forEach((c) => { const s = document.createElement("div"); s.className = "seg"; s.style.background = COLORS[c]; d.appendChild(s); }); d.onclick = () => tap(i); box.appendChild(d); });

@@ -1,5 +1,5 @@
 // Service worker Arcade: rozcestník a sólo hry fungují offline. Online hry se načtou z cache, na hraní potřebují síť.
-const VERSION = "arcade-v5";
+const VERSION = "arcade-v6";
 const GAMES = ["zigdash", "merge", "snake", "mines", "bricks", "sudoku", "solitaire", "roll", "tubes", "splatz", "tower", "front", "doodle", "boom", "fleet"];
 const SHELL = ["./", "./hub.css", "./hub.js", "./config.js", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
 const norm = (u) => { const url = new URL(u, self.location.href); url.search = ""; if (url.pathname.endsWith("/index.html")) url.pathname = url.pathname.slice(0, -10); return url.href; };

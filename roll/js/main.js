@@ -38,48 +38,46 @@
     anim = { from: ball, path: cellsPath, t: 0, dv, len: cellsPath.length }; beep(440 + Math.min(200, cellsPath.length * 30), 0.05, "sine", 0.05);
     ball = cellsPath[cellsPath.length - 1]; moves++; $("moves").textContent = moves;
   }
-  function finishAnim() { for (const c of anim.path) painted.add(c); squash = { t: 0.22, dir: anim.dv }; shake = Math.min(1, 0.3 + anim.len * 0.1); anim = null; beep(300, 0.07, "triangle", 0.09); if (painted.size === lvl.list.length) win(); }
-  async function win() { beep(880, 0.25); setTimeout(() => beep(1320, 0.3), 100); solved = Math.max(solved, level); set("rl_solved", solved); $("over").classList.remove("hidden"); $("over-title").textContent = L("done"); $("over-score").textContent = "★".repeat(moves <= best ? 3 : moves <= best + 2 ? 2 : 1); $("over-rank").textContent = L("movesIn", moves, best); const r = await Arc.submit("roll", solved); if (r) $("over-rank").textContent += " · " + L("rank", r); }
+  function finishAnim() { for (const c of anim.path) painted.add(c); squash = { t: 0.22, dir: anim.dv }; shake = Math.min(0.8, 0.2 + anim.len * 0.08); anim = null; beep(300, 0.07, "triangle", 0.09); if (painted.size === lvl.list.length) { winT = 0; win(); } }
+  async function win() { beep(880, 0.25); setTimeout(() => beep(1320, 0.3), 100); await new Promise(r => setTimeout(r, 700)); solved = Math.max(solved, level); set("rl_solved", solved); $("over").classList.remove("hidden"); $("over-title").textContent = L("done"); $("over-score").textContent = "★".repeat(moves <= best ? 3 : moves <= best + 2 ? 2 : 1); $("over-rank").textContent = L("movesIn", moves, best); const r = await Arc.submit("roll", solved); if (r) $("over-rank").textContent += " · " + L("rank", r); }
   function next() { level++; set("rl_level", level); load(); Arc.progress.save("roll", { level, solved }); }
   $("btn-next").onclick = next; $("btn-reset").onclick = load;
   $("btn-undo").onclick = () => { if (anim) return; const h = hist.pop(); if (!h) return; ball = h.ball; painted = h.painted; moves++; $("moves").textContent = moves; };
   $("btn-skip").onclick = () => { const ov = document.createElement("div"); ov.className = "overlay"; ov.innerHTML = `<div class="card"><h2>${L("adTitle")}</h2><div class="big-num" id="ad-n">3</div><div class="dim">${L("adNote")}</div><button id="ad-x">${L("close")}</button></div>`; document.body.appendChild(ov); let n = 3; const iv = setInterval(() => { n--; ov.querySelector("#ad-n").textContent = n; if (n <= 0) { clearInterval(iv); ov.remove(); next(); } }, 1000); ov.querySelector("#ad-x").onclick = () => { clearInterval(iv); ov.remove(); }; };
   $("btn-lb").onclick = () => Arc.openLb("roll", (s) => "L" + s);
   // ---------- kreslení (izometricky vypadající dlaždice: horní plocha + boční hrana)
-  let last = 0;
+  let last = 0, winT = 0;
   function draw(now) {
     const dt = Math.min(0.05, (now - last) / 1000); last = now;
     ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, S, S);
-    if (shake > 0) { ctx.translate((Math.random() - 0.5) * shake * 6, (Math.random() - 0.5) * shake * 6); shake = Math.max(0, shake - dt * 5); }
+    if (shake > 0) { ctx.translate((Math.random() - 0.5) * shake * 5, (Math.random() - 0.5) * shake * 5); shake = Math.max(0, shake - dt * 6); }
     const W = lvl.W, col = COLORS[(level - 1) % COLORS.length];
     if (!lvl.bb) { const xs = lvl.list.map(c => c % W), ys = lvl.list.map(c => (c / W) | 0); lvl.bb = { x0: Math.min(...xs), y0: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs) + 1, h: Math.max(...ys) - Math.min(...ys) + 1 }; }
     const cs = Math.min(S / (lvl.bb.w + 1), S / (lvl.bb.h + 1), 80), ox = (S - lvl.bb.w * cs) / 2, oy = (S - lvl.bb.h * cs) / 2;
     const pos = (c) => ({ x: ox + ((c % W) - lvl.bb.x0) * cs, y: oy + (((c / W) | 0) - lvl.bb.y0) * cs });
-    // postup animace: rychle, s dojezdem
-    let bx, by;
-    if (anim) { const speed = 10 + anim.len * 2.5; anim.t += dt * speed; const k = Math.min(anim.len, anim.t); const prev = k < 1 ? anim.from : anim.path[Math.floor(k) - 1]; const nxt = anim.path[Math.min(anim.len - 1, Math.floor(k))]; const f = k - Math.floor(k); const a = pos(prev), b = pos(nxt); bx = a.x + (b.x - a.x) * (k >= anim.len ? 1 : f); by = a.y + (b.y - a.y) * (k >= anim.len ? 1 : f);
-      // prach za kuličkou
-      if (Math.random() < 0.6) particles.push({ x: bx + cs / 2 - anim.dv[0] * cs * 0.3 + (Math.random() - 0.5) * 8, y: by + cs * 0.55 - anim.dv[1] * cs * 0.3 + (Math.random() - 0.5) * 8, vx: -anim.dv[0] * 40 + (Math.random() - 0.5) * 30, vy: -anim.dv[1] * 40 + (Math.random() - 0.5) * 30, life: 0.35, c: col });
+    // pohyb: konstantně rychle (22 polí/s), poslední kousek s dojezdem
+    let bx, by, k = 0;
+    if (anim) { anim.t += dt * 22; k = Math.min(anim.len, anim.t); const eased = k >= anim.len - 0.6 ? anim.len - 0.6 + (k - (anim.len - 0.6)) * 0.85 : k; const prev = eased < 1 ? anim.from : anim.path[Math.floor(eased) - 1]; const nxt = anim.path[Math.min(anim.len - 1, Math.floor(eased))]; const f = eased - Math.floor(eased); const a = pos(prev), b = pos(nxt); bx = a.x + (b.x - a.x) * f; by = a.y + (b.y - a.y) * f;
+      if (Math.random() < 0.8) particles.push({ x: bx + cs / 2 + (Math.random() - 0.5) * cs * 0.4, y: by + cs * 0.45 + (Math.random() - 0.5) * cs * 0.4, vx: -anim.dv[0] * 60 + (Math.random() - 0.5) * 40, vy: -anim.dv[1] * 60 + (Math.random() - 0.5) * 40, life: 0.3, c: "#fff" });
       if (k >= anim.len) { const e = pos(anim.path[anim.len - 1]); bx = e.x; by = e.y; finishAnim(); } }
     else { const p = pos(ball); bx = p.x; by = p.y; }
-    // dlaždice (boční hrana + horní plocha; čerstvě obarvené mírně "poskočí")
-    for (const c of lvl.list) { const p = pos(c); ctx.fillStyle = "#0E0A1C"; ctx.fillRect(p.x, p.y + cs * 0.12, cs, cs); }
-    for (const c of lvl.list) { const p = pos(c); const isP = painted.has(c) || (anim && anim.path.includes(c) && animProgressCovers(c)); ctx.fillStyle = isP ? col : "#3A3155"; ctx.fillRect(p.x + 1, p.y + 1, cs - 2, cs - 2); ctx.fillStyle = isP ? "rgba(255,255,255,.28)" : "rgba(255,255,255,.1)"; ctx.fillRect(p.x + 1, p.y + 1, cs - 2, 3); }
-    for (const p of particles) { p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt; ctx.globalAlpha = Math.max(0, p.life * 2.5); ctx.fillStyle = p.c; ctx.fillRect(p.x - 2, p.y - 2, 4, 4); } ctx.globalAlpha = 1; particles = particles.filter(p => p.life > 0);
-    // kulička jako v Splatz: barevná, oči ve směru, squash při nárazu
-    const r = cs * 0.34, cx = bx + cs / 2, cy = by + cs * 0.45;
-    ctx.fillStyle = "rgba(0,0,0,.3)"; ctx.beginPath(); ctx.ellipse(cx, by + cs * 0.68, r * 0.9, r * 0.35, 0, 0, 6.28); ctx.fill();
+    // stěny: tmavá hrana kolem tvaru
+    ctx.fillStyle = "#0B0716"; for (const c of lvl.list) { const p = pos(c); ctx.fillRect(p.x - 6, p.y - 6, cs + 12, cs + 14); }
+    // dlaždice
+    const done = painted.size === lvl.list.length;
+    for (const c of lvl.list) { const p = pos(c); const isP = painted.has(c) || (anim && anim.path.includes(c) && animProgressCovers(c)); const pulse = done ? 0.5 + 0.5 * Math.sin(winT * 6 + (c % W) * 0.7 + ((c / W) | 0) * 0.5) : 0; ctx.fillStyle = isP ? col : "#7C86A4"; ctx.fillRect(p.x, p.y, cs, cs); ctx.fillStyle = "rgba(0,0,0,.08)"; ctx.fillRect(p.x, p.y + cs - 3, cs, 3); ctx.strokeStyle = "rgba(0,0,0,.12)"; ctx.lineWidth = 1; ctx.strokeRect(p.x + 0.5, p.y + 0.5, cs - 1, cs - 1); if (pulse) { ctx.fillStyle = `rgba(255,255,255,${pulse * 0.35})`; ctx.fillRect(p.x, p.y, cs, cs); } }
+    if (done) winT += dt;
+    for (const p of particles) { p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt; ctx.globalAlpha = Math.max(0, p.life * 2.5); ctx.fillStyle = p.c; ctx.fillRect(p.x - 1.5, p.y - 1.5, 3, 3); } ctx.globalAlpha = 1; particles = particles.filter(p => p.life > 0);
+    // pruh za kuličkou (motion blur)
+    const r = cs * 0.3, cx = bx + cs / 2, cy = by + cs * 0.45;
+    if (anim) { const len = Math.min(cs * 2.2, cs * 0.5 + k * cs * 0.4); const g = ctx.createLinearGradient(cx, cy, cx - anim.dv[0] * len, cy - anim.dv[1] * len); g.addColorStop(0, "rgba(255,255,255,.55)"); g.addColorStop(1, "rgba(255,255,255,0)"); ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(cx - anim.dv[0] * len / 2, cy - anim.dv[1] * len / 2, anim.dv[0] ? len / 2 : r * 0.9, anim.dv[1] ? len / 2 : r * 0.9, 0, 0, 6.28); ctx.fill(); }
+    ctx.fillStyle = "rgba(0,0,0,.35)"; ctx.beginPath(); ctx.ellipse(cx, by + cs * 0.7, r * 0.9, r * 0.35, 0, 0, 6.28); ctx.fill();
     ctx.save(); ctx.translate(cx, cy);
     let sx = 1, sy = 1;
-    if (squash.t > 0) { squash.t -= dt; const k = Math.sin(squash.t / 0.22 * Math.PI) * (squash.small ? 0.15 : 0.32); if (squash.dir[0]) { sx = 1 - k; sy = 1 + k; } else { sy = 1 - k; sx = 1 + k; } }
-    else if (anim) { const k = Math.min(0.18, anim.len * 0.02); if (anim.dv[0]) { sx = 1 + k; sy = 1 - k; } else { sy = 1 + k; sx = 1 - k; } }
+    if (squash.t > 0) { squash.t -= dt; const kk = Math.sin(squash.t / 0.22 * Math.PI) * (squash.small ? 0.15 : 0.3); if (squash.dir[0]) { sx = 1 - kk; sy = 1 + kk; } else { sy = 1 - kk; sx = 1 + kk; } }
     ctx.scale(sx, sy);
-    ctx.fillStyle = "#F4F0E8"; ctx.beginPath(); ctx.arc(0, 0, r, 0, 6.28); ctx.fill();
-    ctx.fillStyle = "rgba(255,255,255,.7)"; ctx.beginPath(); ctx.arc(-r * 0.35, -r * 0.4, r * 0.28, 0, 6.28); ctx.fill();
-    const dv = [[-1, 0], [0, -1], [1, 0], [0, -1]][dir] || [1, 0]; const ex = dv[0] * r * 0.25, ey = (dir === 3 ? 1 : dv[1]) * r * 0.2;
-    blink -= dt; if (blink < -3) blink = 0.12; const open = blink > 0 ? 0.2 : 1;
-    ctx.fillStyle = "#2B2440"; for (const s_ of [-1, 1]) { ctx.beginPath(); ctx.ellipse(s_ * r * 0.3 + ex, -r * 0.05 + ey, r * 0.16, r * 0.2 * open, 0, 0, 6.28); ctx.fill(); }
-    ctx.strokeStyle = "#2B2440"; ctx.lineWidth = Math.max(1.5, r * 0.08); ctx.beginPath(); ctx.arc(ex * 0.5, r * 0.25 + ey * 0.5, r * 0.28, 0.2, Math.PI - 0.2); ctx.stroke();
+    const g2 = ctx.createRadialGradient(-r * 0.35, -r * 0.4, r * 0.1, 0, 0, r); g2.addColorStop(0, "#FFFFFF"); g2.addColorStop(0.6, "#E8E6F0"); g2.addColorStop(1, "#A9A6BD");
+    ctx.fillStyle = g2; ctx.beginPath(); ctx.arc(0, 0, r, 0, 6.28); ctx.fill();
     ctx.restore();
     requestAnimationFrame(draw);
   }
