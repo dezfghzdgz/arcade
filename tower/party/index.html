@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <meta name="theme-color" content="#1F1A3A" />
+  <meta name="description" content="Quick party minigames for 2–8 friends, everyone on their own phone: reflex, tap race, quick math, color match." />
+  <link rel="manifest" href="manifest.webmanifest" /><link rel="icon" href="icon-192.png" /><link rel="apple-touch-icon" href="icon-192.png" />
+  <title>Party</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div id="stage">
+    <a id="btn-hub" class="hub-link" href="../">‹ Arcade</a>
+    <!-- Menu -->
+    <div id="menu" class="screen">
+      <div class="title">Party</div>
+      <p class="tagline" data-i18n="tagline">Quick minigames. Everyone on their own phone. 2–8 players.</p>
+      <input id="name-input" maxlength="12" placeholder="Your name" data-i18n-ph="yourName" autocomplete="off" />
+      <button id="btn-create" class="big" data-i18n="createRoom">Create room</button>
+      <div class="join-row"><input id="code-input" maxlength="4" placeholder="CODE" autocapitalize="characters" autocomplete="off" /><button id="btn-join" data-i18n="joinRoom">Join</button></div>
+      <div class="menu-foot"><button id="btn-sound" class="ghost">Sound: on</button><button id="btn-lang" class="ghost">Čeština</button></div>
+    </div>
+    <!-- Lobby -->
+    <div id="lobby" class="screen panel hidden">
+      <div class="panel-head"><button id="btn-leave" class="back">‹</button><h2 data-i18n="lobby">Room</h2><div id="lobby-kind" class="kind"></div></div>
+      <div class="code-box"><div id="lobby-code" class="code">ABCD</div><div class="code-actions"><button id="btn-copy" data-i18n="copyLink">Copy link</button><button id="btn-share-room" data-i18n="share">Share</button></div></div>
+      <div class="set-row"><span data-i18n="speed">Timer</span><div id="speed-btns" class="seg"></div></div>
+      <div id="lobby-count" class="lb-status"></div>
+      <div id="lobby-list" class="lobby-list"></div>
+      <button id="btn-start" class="big hidden" data-i18n="start">Start</button>
+      <div id="lobby-wait" class="lb-status hidden" data-i18n="waitingHost">Waiting for the host to start…</div>
+    </div>
+    <!-- Hra -->
+    <div id="game" class="screen panel hidden">
+      <div class="game-top"><div id="g-step" class="kind"></div><div id="g-timer" class="timer">0</div></div>
+      <h2 id="g-title"></h2><p id="g-hint" class="lb-status"></p>
+      <div id="g-area" class="g-area"></div>
+      <div id="g-score" class="album hidden"></div>
+    </div>
+    <!-- Konec -->
+    <div id="results" class="screen hidden">
+      <h2 data-i18n="results">That's all!</h2>
+      <button id="btn-again" class="big"></button>
+      <button id="btn-res-menu" data-i18n="backMenu">Menu</button>
+    </div>
+    <div id="banner" class="hidden">ad banner</div>
+    <div id="toast" class="hidden"></div>
+  </div>
+  <script src="js/config.js"></script><script src="js/storage.js"></script><script src="js/i18n.js"></script><script src="js/audio.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="js/net.js"></script><script src="js/monetization.js"></script><script src="js/main.js"></script>
+</body>
+</html>

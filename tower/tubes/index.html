@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" /><meta name="theme-color" content="#1B1030" />
+  <meta name="description" content="Pour the colors until every tube is one color. Endless levels, undo, hints." />
+  <link rel="icon" href="icon-192.png" /><link rel="apple-touch-icon" href="icon-192.png" /><title>Tubes</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" /><link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div id="stage">
+    <a id="btn-hub" class="hub-link" href="../">‹ Arcade</a>
+    <div class="top"><div class="brand">Tubes</div><div class="scores"><div class="box"><small data-i18n="level">Level</small><b id="level">1</b></div><div class="box"><small data-i18n="moves">Moves</small><b id="moves">0</b></div></div></div>
+    <div class="lvl" id="diff"></div>
+    <div id="tubes" class="tubes"></div>
+    <div class="row"><button id="btn-undo" data-i18n="undo">Undo</button><button id="btn-reset" data-i18n="reset">Restart</button><button id="btn-extra">+🧪</button><button id="btn-hint">💡 <span id="hint-n">3</span></button></div>
+    <p class="hint" data-i18n="hint">Tap a tube, then another to pour. Same color on top only.</p>
+    <div id="over" class="overlay hidden"><div class="card"><h2 id="over-title"></h2><div id="over-score" class="big-num"></div><div id="over-rank" class="dim"></div><button id="btn-next" class="big" data-i18n="next">Next level</button></div></div>
+    <div id="lb" class="overlay hidden"><div class="card"><h2 data-i18n="leaderboard">Leaderboard</h2><div class="name-row"><input id="name-input" maxlength="12" placeholder="Your name" data-i18n-ph="yourName" /><button id="btn-name">OK</button></div><div id="lb-status" class="dim"></div><ol id="lb-list"></ol><button id="lb-close" data-i18n="close">Close</button></div></div>
+    <div class="foot"><button id="btn-lb" class="ghost" data-i18n="leaderboard">Leaderboard</button><button id="btn-sound" class="ghost"></button><button id="btn-lang" class="ghost"></button></div>
+  </div>
+  <script src="js/common.js"></script><script src="js/main.js"></script>
+</body>
+</html>

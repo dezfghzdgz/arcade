@@ -2,153 +2,98 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-  <meta name="theme-color" content="#2B2440" />
-  <meta name="description" content="Jump up the tower with friends. First to the top wins. 8 players, one link." />
-  <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="icon" href="icon-192.png" />
-  <link rel="apple-touch-icon" href="icon-192.png" />
-  <title>Tower</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#160B2E" />
+  <meta name="description" content="Quick games for your phone or a bored moment at school. Solo or with friends over one link." />
+  <title>Arcade</title>
+  <link rel="icon" href="icon-192.png" /><link rel="apple-touch-icon" href="icon-192.png" /><link rel="manifest" href="manifest.webmanifest" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/style.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="hub.css?v=10" />
 </head>
 <body>
-  <div id="stage">
-    <canvas id="game"></canvas>
-
-    <!-- HUD -->
-    <div id="hud" class="screen hidden">
-      <div class="hud-top">
-        <div id="hud-time">60</div>
-        <div id="hud-bars" class="hud-bars"></div>
-      </div>
-      
-      <button id="btn-left" class="dash dir left">◀</button><button id="btn-right" class="dash dir right">▶</button><button id="btn-dash" class="dash">JUMP</button>
-      <button id="btn-spec-leave" class="spec-leave hidden" data-i18n="leave">Leave</button>
-      <div id="hud-hint" class="hud-hint"></div>
-    </div>
-
-    <!-- Menu -->
-    <div id="menu" class="screen">
-      <a id="btn-hub" class="hub-link" href="../">‹ Arcade</a>
-      <div class="title">Tower</div>
-      <p class="tagline" data-i18n="tagline">Jump up the tower. First to the top wins.</p>
-      <div class="me-row">
-        <canvas id="me-preview" width="72" height="72"></canvas>
-        <input id="name-input" maxlength="12" placeholder="Your name" data-i18n-ph="yourName" autocomplete="off" />
-      </div>
-      <div id="color-row" class="color-row"></div>
-      <button id="btn-solo" class="big" data-i18n="playBots">Play vs bots</button>
-      <button id="btn-create" class="big alt" data-i18n="createRoom">Create room</button>
-      <div class="join-row">
-        <input id="code-input" maxlength="4" placeholder="CODE" autocapitalize="characters" autocomplete="off" />
-        <button id="btn-join" data-i18n="joinRoom">Join</button>
-      </div>
-      <div class="menu-row">
-        <button id="btn-shop" data-i18n="shop">Shop</button>
-        <button id="btn-missions"><span data-i18n="missions">Missions</span> <b id="missions-badge"></b></button>
-        <div class="coins-wallet"><span class="coin"></span><span id="menu-coins">0</span></div>
-      </div>
-      <div id="menu-stats" class="stats"></div>
-      <div class="menu-foot">
-        <button id="btn-sound" class="ghost">Sound: on</button>
-        <button id="btn-vibrate" class="ghost">Vibration: on</button>
-        <button id="btn-lang" class="ghost">Čeština</button>
-      </div>
-    </div>
-
-    <!-- Lobby -->
-    <div id="lobby" class="screen panel hidden">
-      <div class="panel-head">
-        <button id="btn-leave" class="back">‹</button>
-        <h2 data-i18n="lobby">Místnost</h2>
-        <div id="lobby-kind" class="kind"></div>
-      </div>
-      <div id="code-box" class="code-box">
-        <div id="lobby-code" class="code">ABCD</div>
-        <div class="code-actions">
-          <button id="btn-copy" data-i18n="copyLink">Kopírovat odkaz</button>
-          <button id="btn-share-room" data-i18n="share">Sdílet</button>
+  <header class="top">
+    <a class="brand" href="./">Arcade</a>
+    <nav id="nav">
+      <button id="btn-pass" class="pass hidden"></button>
+      <button id="btn-signin" data-i18n="signIn">Sign in</button>
+      <div id="user-menu" class="user hidden">
+        <button id="btn-user"><span id="user-name">…</span> ▾</button>
+        <div id="user-drop" class="drop hidden">
+          <button data-page="submit" data-i18n="submitGame">Submit a game</button>
+          <button data-page="mine" data-i18n="mySubs">My submissions</button>
+          <button id="btn-admin" class="hidden" data-page="admin" data-i18n="admin">Review queue</button>
+          <button id="btn-signout" data-i18n="signOut">Sign out</button>
         </div>
       </div>
-      <div id="settings-box" class="settings-box">
-        <div class="set-row"><span data-i18n="mode">Mód</span><div id="mode-btns" class="seg"></div></div>
-        <div id="mode-desc" class="lb-status"></div>
-        <div class="set-row"><span data-i18n="length">Length</span><div id="len-btns" class="seg"></div></div>
-        <div class="set-row" id="target-row"><span data-i18n="target">Target</span><div id="target-btns" class="seg"></div></div>
-        <div class="set-row"><span data-i18n="abilities">Abilities</span><div id="pu-btns" class="seg"></div></div>
-        <div class="set-row"><span data-i18n="bots">Bots</span><div id="bots-btns" class="seg"></div></div>
-      </div>
-      <div id="lobby-count" class="lb-status"></div>
-      <div id="lobby-list" class="lobby-list"></div>
-      <div id="lobby-host-actions" class="menu-row hidden">
-        <button id="btn-bots" data-i18n="fillBots">Doplnit boty</button>
-        <button id="btn-start" class="big" data-i18n="start">Start</button>
-      </div>
-      <div id="lobby-wait" class="lb-status hidden" data-i18n="waitingHost">Čekej, až hostitel odstartuje…</div>
-    </div>
+    </nav>
+  </header>
 
-    <!-- Výsledky -->
-    <div id="results" class="screen hidden">
-      <div id="res-title" class="res-title"></div>
-      <div id="res-list" class="res-list"></div>
-      <div id="res-coins" class="res-coins"></div>
-      <button id="btn-double" class="big alt hidden"><span data-i18n="doubleAd">Zdvojnásobit za reklamu</span></button>
-      <div class="menu-row">
-        <button id="btn-again" class="big" data-i18n="again">Znovu</button>
-        <button id="btn-res-menu" data-i18n="backMenu">Menu</button>
-      </div>
-      <div id="res-wait" class="lb-status hidden" data-i18n="waitNext">Čekej na další kolo…</div>
+  <main id="page-home" class="page">
+    <h1>Arcade</h1>
+    <p class="sub" data-i18n="sub">Quick games. Solo or with friends over one link.</p>
+    <div id="pass-banner" class="pass-banner hidden"></div>
+    <div id="install" class="install"><span>📲 <b data-i18n="installT">Install Arcade</b> · <span data-i18n="installD">works offline, no wifi needed for solo games</span></span><div class="acts"><button id="btn-install" class="pass hidden" data-i18n="installBtn">Install app</button><button id="btn-offline" data-i18n="offlineBtn">Save games for offline</button><a class="btn-like" href="desktop/README.md" target="_blank" rel="noopener" data-i18n="desktopBtn">Download for PC</a></div></div>
+    <div class="cols"><div class="col"><h2 class="colh solo-h" data-i18n="soloH">Offline · solo</h2><div id="games-solo" class="grid one"></div></div><div class="col"><h2 class="colh friends-h" data-i18n="friendsH">Online · with friends</h2><div id="games-friends" class="grid one"></div></div></div>
+    <div id="games" class="grid hidden"></div>
+    <h2 class="section hidden" id="community-h" data-i18n="community">From the community</h2>
+    <div id="community" class="grid"></div>
+    <div class="foot">
+      <a class="kine" id="kine-link" href="#" target="_blank" rel="noopener"><span class="k">K</span><span><span data-i18n="kine">Also by us:</span> <b>Kine</b> <span data-i18n="kineDesc">– videos, live, creators</span></span></a>
+      <button id="lang">Čeština</button>
     </div>
+  </main>
 
-    <!-- Úkoly -->
-    <div id="missions" class="screen panel hidden">
-      <div class="panel-head">
-        <button class="back" data-back>‹</button>
-        <h2 data-i18n="missions">Úkoly</h2>
-      </div>
-      <div class="shop-section" data-i18n="dailyT">Denní</div>
-      <div id="daily-list" class="missions-list"></div>
-      <div class="shop-section" data-i18n="weeklyT">Týdenní</div>
-      <div id="weekly-list" class="missions-list"></div>
+  <main id="page-submit" class="page hidden">
+    <button class="back" data-page="home">‹ Arcade</button>
+    <h2 data-i18n="submitGame">Submit a game</h2>
+    <p class="sub" data-i18n="submitHelp">Host your HTML5 game anywhere (Vercel, GitHub Pages, itch.io), paste the link. We play it, and if it fits, it appears on the Arcade with your name.</p>
+    <form id="submit-form" class="form">
+      <label><span data-i18n="fTitle">Title</span><input name="title" maxlength="40" required /></label>
+      <label><span data-i18n="fDesc">One-line description</span><input name="description" maxlength="120" required /></label>
+      <label><span data-i18n="fUrl">Play URL (https://…)</span><input name="url" type="url" required /></label>
+      <label><span data-i18n="fIcon">Icon URL (optional, square PNG)</span><input name="icon_url" type="url" /></label>
+      <label><span data-i18n="fKind">Type</span><select name="kind"><option value="solo">Solo</option><option value="friends">With friends</option></select></label>
+      <label><span data-i18n="fNote">Note for reviewers (optional)</span><textarea name="note" maxlength="500"></textarea></label>
+      <button class="big" type="submit" data-i18n="send">Send for review</button>
+    </form>
+  </main>
+
+  <main id="page-mine" class="page hidden">
+    <button class="back" data-page="home">‹ Arcade</button>
+    <h2 data-i18n="mySubs">My submissions</h2>
+    <div id="mine-list" class="list"></div>
+  </main>
+
+  <main id="page-admin" class="page hidden">
+    <button class="back" data-page="home">‹ Arcade</button>
+    <h2 data-i18n="admin">Review queue</h2>
+    <div id="admin-list" class="list"></div>
+  </main>
+
+  <div id="auth" class="modal hidden">
+    <div class="box">
+      <button class="close" id="auth-close">×</button>
+      <h3 id="auth-title" data-i18n="signIn">Sign in</h3>
+      <form id="auth-form" class="form">
+        <label id="auth-name-row" class="hidden"><span data-i18n="fName">Display name</span><input name="name" maxlength="20" /></label>
+        <label><span>E-mail</span><input name="email" type="email" required autocomplete="email" /></label>
+        <label><span data-i18n="fPass">Password</span><input name="password" type="password" minlength="6" required autocomplete="current-password" /></label>
+        <div id="auth-err" class="err"></div>
+        <button class="big" type="submit" id="auth-submit" data-i18n="signIn">Sign in</button>
+      </form>
+      <button id="auth-toggle" class="ghost"></button>
     </div>
-
-    <!-- Obchod -->
-    <div id="shop" class="screen panel hidden">
-      <div class="panel-head">
-        <button class="back" data-back>‹</button>
-        <h2 data-i18n="shop">Obchod</h2>
-        <div class="coins-wallet"><span class="coin"></span><span id="shop-coins">0</span></div>
-      </div>
-      <div class="shop-section" data-i18n="hats">Klobouky</div>
-      <div id="hat-grid" class="hat-grid"></div>
-      <div class="shop-section" data-i18n="patterns">Vzory</div>
-      <div id="pat-grid" class="hat-grid"></div>
-      <div class="shop-section" data-i18n="purchases">Nákupy</div>
-      <div class="iap-list">
-        <button class="iap" data-iap="remove_ads"><span data-i18n="removeAds">Bez reklam</span><b id="price-remove_ads">€3.99/měsíc</b></button>
-        <button class="iap" data-iap="coins_500"><span id="lbl-coins_500">500 mincí</span><b id="price-coins_500">€1.99</b></button>
-        <button class="iap" data-iap="coins_2000"><span id="lbl-coins_2000">2 000 mincí</span><b id="price-coins_2000">€5.99</b></button>
-      </div>
-      <button id="btn-restore" class="ghost" data-i18n="restore">Obnovit nákupy</button>
-      <div id="iap-note" class="iap-note hidden" data-i18n="stripeNote"></div>
-    </div>
-
-    <div id="banner" class="hidden" data-i18n="banner">reklamní banner</div>
-    <div id="toast" class="hidden"></div>
   </div>
+  <div id="toast" class="toast hidden"></div>
 
-  <script src="js/config.js"></script>
-  <script src="js/storage.js"></script>
-  <script src="js/i18n.js"></script>
-  <script src="js/audio.js"></script>
+  <script src="config.js?v=10"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-  <script src="js/sim.js"></script>
-  <script src="js/render.js"></script>
-  <script src="js/net.js"></script>
-  <script src="js/missions.js"></script>
-  <script src="js/monetization.js"></script>
-  <script src="js/main.js"></script>
+  <script src="hub.js?v=10"></script>
+  <script>
+    if ("serviceWorker" in navigator) { navigator.serviceWorker.register("./sw.js", { updateViaCache: "none" }).then(r => { r.update(); setInterval(() => r.update(), 60000); }).catch(() => {});
+      // nová verze webu se aktivovala -> jednou obnovit, ať se ukáže hned
+      let reloaded = false; navigator.serviceWorker.addEventListener("message", (e) => { if (e.data && e.data.t === "updated" && !reloaded && sessionStorage.getItem("arcade_sw_v") !== e.data.v) { sessionStorage.setItem("arcade_sw_v", e.data.v); reloaded = true; location.reload(); } }); }
+  </script>
 </body>
 </html>

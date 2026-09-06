@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" /><meta name="theme-color" content="#1B1030" />
+  <meta name="description" content="Slide, merge, chase a high score. Daily challenge and global leaderboard." />
+  <link rel="icon" href="icon-192.png" /><link rel="apple-touch-icon" href="icon-192.png" /><title>Merge</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" /><link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div id="stage">
+    <a id="btn-hub" class="hub-link" href="../">‹ Arcade</a>
+    <div class="top"><div class="brand">Merge</div><div class="scores"><div class="box"><small data-i18n="score">Score</small><b id="score">0</b></div><div class="box"><small data-i18n="best">Best</small><b id="best">0</b></div></div></div>
+    <div class="modes"><button id="m-classic" class="active" data-i18n="classic">Classic</button><button id="m-daily" data-i18n="daily">Daily</button><button id="btn-lb" data-i18n="leaderboard">Leaderboard</button></div>
+    <div id="board" class="board"></div>
+    <div class="row"><button id="btn-undo" data-i18n="undo">Undo</button><button id="btn-new" class="big" data-i18n="newGame">New game</button></div>
+    <p id="hint" class="hint" data-i18n="hint">Swipe or use arrow keys. Same numbers merge.</p>
+    <div id="over" class="overlay hidden"><div class="card"><h2 id="over-title"></h2><div id="over-score" class="big-num"></div><div id="over-rank" class="dim"></div><button id="btn-continue" class="hidden" data-i18n="keepGoing">Keep going</button><button id="btn-again" class="big" data-i18n="tryAgain">Try again</button></div></div>
+    <div id="lb" class="overlay hidden"><div class="card"><h2 data-i18n="leaderboard">Leaderboard</h2><div class="name-row"><input id="name-input" maxlength="12" placeholder="Your name" data-i18n-ph="yourName" /><button id="btn-name">OK</button></div><div id="lb-status" class="dim"></div><ol id="lb-list"></ol><button id="lb-close" data-i18n="close">Close</button></div></div>
+    <div class="foot"><button id="btn-sound" class="ghost"></button><button id="btn-lang" class="ghost"></button></div>
+  </div>
+  <script src="js/main.js"></script>
+</body>
+</html>
