@@ -1,10 +1,11 @@
 (() => {
   const { $, get, set, L, beep } = Arc;
-  Arc.texts({ en: { level: "Level", lives: "Lives", hint: "Drag or move the mouse. Tap to launch.", gameOver: "Game over", levelUp: (n) => `Level ${n}!` }, cs: { level: "Level", lives: "Životy", hint: "Táhni prstem nebo myší. Ťuknutím vystřel.", gameOver: "Konec hry", levelUp: (n) => `Level ${n}!` } });
+  Arc.texts({ en: { level: "Level", lives: "Lives", hint: "Drag or move the mouse. Tap to launch.", gameOver: "Game over", levelUp: (n) => `Level ${n}!`, continueLv: (n) => `Continue from level ${n}` }, cs: { level: "Level", lives: "Životy", hint: "Táhni prstem nebo myší. Ťuknutím vystřel.", gameOver: "Konec hry", levelUp: (n) => `Level ${n}!`, continueLv: (n) => `Pokračovat od levelu ${n}` } });
   const cv = $("cv"), ctx = cv.getContext("2d"), W = cv.width, H = cv.height;
   const COLORS = ["#FF5E7E", "#FF9A3C", "#FFCF5A", "#B6FF5A", "#5EE1D0", "#6FC3FF", "#B98CFF", "#FF7AD9"];
   let paddle, balls, bricks, drops, lasers, score, lives, level, running, over, last = 0, particles = [], shake = 0, wideT = 0, laserT = 0, laserCd = 0, popups = [];
-  function reset() { score = 0; lives = 3; level = 1; over = false; newLevel(); hud(); $("over").classList.add("hidden"); }
+  let maxLevel = get("br_max", 1);
+  function reset(startLevel = 1) { score = 0; lives = 3; level = startLevel; over = false; newLevel(); hud(); $("over").classList.add("hidden"); }
   const PATTERNS = [
     (r, c, R, C) => true,                                            // plná stěna
     (r, c, R, C) => (r + c) % 2 === 0,                               // šachovnice
@@ -51,7 +52,7 @@
     for (let i = lasers.length - 1; i >= 0; i--) { const l = lasers[i]; l.y -= 700 * dt; if (l.y < 0) { lasers.splice(i, 1); continue; } const k = bricks.findIndex(br => l.x >= br.x && l.x <= br.x + br.w && l.y >= br.y && l.y <= br.y + br.h); if (k >= 0) { hitBrick(k); lasers.splice(i, 1); } }
     for (let i = drops.length - 1; i >= 0; i--) { const d = drops[i]; d.y += 160 * dt; if (d.y > H + 10) { drops.splice(i, 1); continue; } if (d.y > H - 40 && d.y < H - 10 && Math.abs(d.x - paddle.x) < paddle.w / 2 + 10) { drops.splice(i, 1); power(d.kind); } }
     if (!balls.length) { lives--; hud(); beep(180, 0.4, "sawtooth", 0.15); shake = 1; if (lives <= 0) return gameOver(); balls = [{ x: paddle.x, y: H - 60, vx: 0, vy: 0, stuck: true }]; running = false; }
-    if (!bricks.length) { level++; score += 100 * level; hud(); beep(880, 0.3); popups.push({ x: W / 2, y: H / 2, text: L("levelUp", level), life: 1.5 }); newLevel(); }
+    if (!bricks.some(b => b.kind !== "steel")) { level++; if (level > maxLevel) { maxLevel = level; set("br_max", maxLevel); Arc.progress.save("bricks", { level: maxLevel }); } $("btn-cont").classList.toggle("hidden", maxLevel <= 1); score += 100 * level; hud(); beep(880, 0.3); popups.push({ x: W / 2, y: H / 2, text: L("levelUp", level), life: 1.5 }); newLevel(); }
     for (const p of particles) { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 300 * dt; p.life -= dt; } particles = particles.filter(p => p.life > 0);
     for (const p of popups) p.life -= dt; popups = popups.filter(p => p.life > 0); shake = Math.max(0, shake - dt * 4);
   }
@@ -90,5 +91,8 @@
   window.addEventListener("pointerup", (e) => { if (!pdown) return; const moved = Math.hypot(e.clientX - pdown.x, e.clientY - pdown.y) > 10; pdown = null; if (!moved && !running && !over) launch(); if (over && !moved) reset(); });
   window.addEventListener("keydown", (e) => { if (e.key === " " && !running && !over) launch(); if (e.key === "ArrowLeft") paddle.x = Math.max(paddle.w / 2, paddle.x - 30); if (e.key === "ArrowRight") paddle.x = Math.min(W - paddle.w / 2, paddle.x + 30); });
   $("btn-new").onclick = reset; $("btn-again").onclick = reset; $("btn-lb").onclick = () => Arc.openLb("bricks");
+  $("btn-cont").onclick = () => reset(maxLevel); $("btn-cont").classList.toggle("hidden", maxLevel <= 1);
+  Arc.progress.load("bricks", { level: maxLevel }).then(p => { if (p.level > maxLevel) { maxLevel = p.level; set("br_max", maxLevel); } $("btn-cont").classList.toggle("hidden", maxLevel <= 1); $("btn-cont").textContent = L("continueLv", maxLevel); });
+  $("btn-cont").textContent = L("continueLv", maxLevel);
   Arc.wire(); Arc.applyLang(); reset(); requestAnimationFrame(loop);
 })();

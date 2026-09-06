@@ -30,5 +30,15 @@ window.Arc = (() => {
     if ($("btn-lang")) $("btn-lang").onclick = () => { lang = lang === "en" ? "cs" : "en"; set("arc_lang", lang); applyLang(); };
     if ($("btn-sound")) $("btn-sound").onclick = () => { sound = !sound; set("arc_sound", sound); applyLang(); };
   }
-  return { $, get, set, L, texts, applyLang, beep, submit, openLb, wire, get lang() { return lang; } };
+  // postup u účtu: hub (supabase-js) drží session v localStorage pod klíčem sb-<ref>-auth-token; použijeme její access_token pro REST s RLS
+  function session() { try { const ref = CFG.supabaseUrl.match(/https:\/\/([a-z0-9]+)\./)[1]; const raw = localStorage.getItem(`sb-${ref}-auth-token`); if (!raw) return null; const j = JSON.parse(raw); if (!j.access_token || (j.expires_at && j.expires_at * 1000 < Date.now())) return null; return j; } catch { return null; } }
+  const progress = {
+    async load(game, local) {   // vrátí sloučený postup (vyšší level vyhrává)
+      const s = session(); if (!s || !CFG.supabaseUrl) return local;
+      try { const r = await fetch(CFG.supabaseUrl + `/rest/v1/progress?game=eq.${game}&select=data`, { headers: { apikey: CFG.supabaseAnonKey, Authorization: "Bearer " + s.access_token } }); if (!r.ok) return local; const rows = await r.json(); const remote = rows[0] && rows[0].data; if (!remote) return local; const out = Object.assign({}, local); for (const k of Object.keys(remote)) if (typeof remote[k] === "number") out[k] = Math.max(remote[k], local[k] || 0); else if (out[k] === undefined) out[k] = remote[k]; return out; } catch { return local; }
+    },
+    async save(game, data) { const s = session(); if (!s || !CFG.supabaseUrl) return false; try { const r = await fetch(CFG.supabaseUrl + "/rest/v1/progress", { method: "POST", headers: { "Content-Type": "application/json", apikey: CFG.supabaseAnonKey, Authorization: "Bearer " + s.access_token, Prefer: "resolution=merge-duplicates" }, body: JSON.stringify({ user_id: s.user.id, game, data, updated_at: new Date().toISOString() }) }); return r.ok; } catch { return false; } },
+    get loggedIn() { return !!session(); },
+  };
+  return { $, get, set, L, texts, applyLang, beep, submit, openLb, wire, progress, get lang() { return lang; } };
 })();

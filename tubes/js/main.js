@@ -21,26 +21,43 @@
   function load() { const nc = colorsFor(level); let seed = level * 104729 + 7; tubes = gen(seed, nc); if (tubes.every(isDone)) { tubes = gen(seed + 1, nc); } sel = -1; moves = 0; hist = []; extra = false; $("level").textContent = level; $("moves").textContent = 0; $("diff").textContent = L("diff", nc); $("over").classList.add("hidden"); render(); }
   const isDone = (t) => t.length === 0 || (t.length === CAP && t.every(c => c === t[0]));
   const top = (t) => t[t.length - 1];
+  let busy = false;
   function pour(a, b, animate = true) {
-    const A = tubes[a], B = tubes[b]; if (!A.length || B.length >= CAP || (B.length && top(B) !== top(A))) return false;
+    const A = tubes[a], B = tubes[b]; if (busy || !A.length || B.length >= CAP || (B.length && top(B) !== top(A))) return false;
     hist.push(tubes.map(x => x.slice())); const c = top(A); let n = 0; while (A.length && top(A) === c && B.length < CAP) { B.push(A.pop()); n++; }
-    moves++; $("moves").textContent = moves; if (animate) { beep(500 + c * 40, 0.08); render(b); } else render();
-    if (tubes.every(isDone)) setTimeout(win, 250); return true;
+    moves++; $("moves").textContent = moves;
+    if (animate) animatePour(a, b, c, n); else render();
+    return true;
+  }
+  // animace přelití: zdrojová zkumavka vyjede nad cílovou a nakloní se, proud teče, hladiny se plynule mění
+  function animatePour(a, b, c, n) {
+    busy = true; const box = $("tubes"), els = box.querySelectorAll(".tube"), ea = els[a], eb = els[b]; if (!ea || !eb) { busy = false; render(); return; }
+    const ra = ea.getBoundingClientRect(), rb = eb.getBoundingClientRect(), rbox = box.getBoundingClientRect();
+    const left = rb.left < ra.left; const dx = (rb.left - ra.left) + (left ? -ra.width * 0.55 : ra.width * 0.55), dy = rb.top - ra.top - ra.height * 0.55;
+    ea.classList.add("pouring"); ea.style.transform = `translate(${dx}px, ${dy}px) rotate(${left ? 70 : -70}deg)`;
+    // segmenty ve zdroji zmenšit, v cíli přidat ghost segmenty a nechat je narůst
+    const srcSegs = [...ea.querySelectorAll(".seg")].slice(-n); const added = []; for (let k = 0; k < n; k++) { const sg = document.createElement("div"); sg.className = "seg ghost"; sg.style.background = COLORS[c]; eb.appendChild(sg); added.push(sg); }
+    setTimeout(() => {
+      const st = document.createElement("div"); st.className = "stream"; st.style.background = COLORS[c]; const tipX = left ? rb.left + rb.width * 0.5 : rb.left + rb.width * 0.5; st.style.left = (tipX - rbox.left - 4) + "px"; st.style.top = (rb.top - rbox.top - 14) + "px"; st.style.height = (rb.height - (tubes[b].length) * rb.height * 0.25 + 8) + "px"; box.appendChild(st);
+      srcSegs.forEach(sg => sg.style.height = "0%"); added.forEach(sg => { sg.classList.remove("ghost"); sg.style.height = "25%"; sg.style.opacity = "1"; }); beep(500 + c * 40, 0.25, "sine", 0.05);
+      setTimeout(() => { st.remove(); ea.style.transform = ""; ea.classList.remove("pouring"); eb.classList.add("wobble"); setTimeout(() => { busy = false; render(); if (tubes.every(isDone)) win(); }, 230); }, 320);
+    }, 230);
   }
   async function win() { beep(880, 0.25); setTimeout(() => beep(1320, 0.3), 100); solved = Math.max(solved, level); set("tb_solved", solved); $("over").classList.remove("hidden"); $("over-title").textContent = L("done"); $("over-score").textContent = "🧪"; $("over-rank").textContent = L("movesIn", moves); const r = await Arc.submit("tubes", solved); if (r) $("over-rank").textContent += " · " + L("rank", r); }
-  function render(pouredInto = -1) {
+  function render() {
     const box = $("tubes"); box.innerHTML = "";
-    tubes.forEach((t, i) => { const d = document.createElement("div"); d.className = "tube" + (i === sel ? " sel" : "") + (t.length === CAP && isDone(t) ? " done" : ""); t.forEach((c, k) => { const s = document.createElement("div"); s.className = "seg" + (i === pouredInto && k >= t.length - 1 ? " pour" : ""); s.style.background = COLORS[c]; d.appendChild(s); }); d.onclick = () => tap(i); box.appendChild(d); });
+    tubes.forEach((t, i) => { const d = document.createElement("div"); d.className = "tube" + (i === sel ? " sel" : "") + (t.length === CAP && isDone(t) ? " done" : ""); t.forEach((c) => { const s = document.createElement("div"); s.className = "seg"; s.style.background = COLORS[c]; d.appendChild(s); }); d.onclick = () => tap(i); box.appendChild(d); });
     $("hint-n").textContent = hints; $("btn-undo").disabled = !hist.length; $("btn-extra").disabled = extra;
   }
-  function tap(i) { if (sel < 0) { if (tubes[i].length) { sel = i; beep(380, 0.04); render(); } return; } if (sel === i) { sel = -1; render(); return; } const ok = pour(sel, i); sel = ok ? -1 : (tubes[i].length ? i : -1); if (!ok) render(); }
+  function tap(i) { if (busy) return; if (sel < 0) { if (tubes[i].length) { sel = i; beep(380, 0.04); render(); } return; } if (sel === i) { sel = -1; render(); return; } const ok = pour(sel, i); sel = ok ? -1 : (tubes[i].length ? i : -1); if (!ok) render(); }
   // nápověda: BFS pár tahů dopředu, vybere tah vedoucí k nejvyššímu "pořádku"
   function hintMove() { const score = (t) => t.reduce((a, x) => a + (isDone(x) ? 3 : 0) + (x.length ? x.filter(c => c === x[0]).length === x.length ? 1 : 0 : 0), 0); let best = null, bs = -1; for (let a = 0; a < tubes.length; a++) for (let b = 0; b < tubes.length; b++) { if (a === b) continue; const A = tubes[a], B = tubes[b]; if (!A.length || B.length >= CAP || (B.length && top(B) !== top(A))) continue; if (!B.length && A.every(c => c === A[0])) continue; const copy = tubes.map(x => x.slice()); const c = top(copy[a]); while (copy[a].length && top(copy[a]) === c && copy[b].length < CAP) copy[b].push(copy[a].pop()); const s = score(copy) + (copy[b].length === CAP && isDone(copy[b]) ? 2 : 0) + Math.random() * 0.1; if (s > bs) { bs = s; best = [a, b]; } } return best; }
   function ad(cb) { const ov = document.createElement("div"); ov.className = "overlay"; ov.innerHTML = `<div class="card"><h2>${L("adTitle")}</h2><div class="big-num" id="ad-n">3</div><div class="dim">${L("adNote")}</div><button id="ad-x">${L("close")}</button></div>`; document.body.appendChild(ov); let n = 3; const iv = setInterval(() => { n--; ov.querySelector("#ad-n").textContent = n; if (n <= 0) { clearInterval(iv); ov.remove(); cb(); } }, 1000); ov.querySelector("#ad-x").onclick = () => { clearInterval(iv); ov.remove(); }; }
-  $("btn-hint").onclick = () => { const go = () => { const m = hintMove(); if (!m) { alert(L("noHint")); return; } sel = m[0]; render(); setTimeout(() => { pour(m[0], m[1]); sel = -1; render(); }, 250); }; if (hints > 0) { hints--; go(); } else ad(() => { hints += 3; go(); }); };
+  $("btn-hint").onclick = () => { const go = () => { const m = hintMove(); if (!m) { alert(L("noHint")); return; } sel = m[0]; render(); setTimeout(() => { sel = -1; pour(m[0], m[1]); }, 250); }; if (hints > 0) { hints--; go(); } else ad(() => { hints += 3; go(); }); };
   $("btn-extra").onclick = () => { if (extra) return; ad(() => { extra = true; tubes.push([]); render(); }); };
-  $("btn-undo").onclick = () => { const h = hist.pop(); if (!h) return; tubes = h; sel = -1; moves++; $("moves").textContent = moves; render(); };
-  $("btn-reset").onclick = load; $("btn-next").onclick = () => { level++; set("tb_level", level); load(); };
+  $("btn-undo").onclick = () => { if (busy) return; const h = hist.pop(); if (!h) return; tubes = h; sel = -1; moves++; $("moves").textContent = moves; render(); };
+  $("btn-reset").onclick = load; $("btn-next").onclick = () => { level++; set("tb_level", level); load(); Arc.progress.save("tubes", { level, solved }); };
   $("btn-lb").onclick = () => Arc.openLb("tubes", (s) => "L" + s);
   Arc.wire(); Arc.applyLang(); load();
+  Arc.progress.load("tubes", { level, solved }).then(p => { if (p.level > level) { level = p.level; set("tb_level", level); load(); } if (p.solved > solved) { solved = p.solved; set("tb_solved", solved); } });
 })();

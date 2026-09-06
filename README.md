@@ -26,6 +26,9 @@ Web je PWA: na rozcestníku je tlačítko **Nainstalovat** (Chrome/Edge na PC i 
 ## Program na PC
 Ve složce `desktop/` je Electron obal – návod tamtéž (výsledek je `.exe` instalátor / přenosné exe, na Macu `.dmg`). Hotové soubory nahraj do GitHub Releases a odkaz dej na rozcestník.
 
+## Postup u účtu
+`SETUP3.sql` založí tabulku `progress`. Přihlášený hráč (session z rozcestníku) má postup v Roll, Tubes a Bricks uložený u účtu a na jiném zařízení pokračuje tam, kde skončil (vyšší level vyhrává). Bez přihlášení zůstává postup jen v prohlížeči. Hry čtou session ze stejného localStorage jako rozcestník; po hodině bez otevřeného rozcestníku token vyprší a ukládá se jen lokálně (otevřením rozcestníku se obnoví).
+
 ## Nové hry
 - **Fleet** (`fleet/`) – námořní bitva až pro 8: joystick = kormidlo (loď se otáčí omezenou rychlostí, zrychluje a dojíždí), tlačítko = salva ze obou boků (3 koule na stranu), ostrovy jako překážky, 3 zásahy = ke dnu, respawn 3 s. Módy: Bitva, Flotily (týmy), Král moří (zóna se stěhuje), Poklad (truhly, potopená loď půlku vysype).
 - **Roll** (`roll/`) – kulička jede, dokud nenarazí, a maluje; obarvi všechno. Levely se generují ze seedu (blob s chodbami) a ověřují hledáním nejkratšího řešení – hvězdičky podle počtu tahů proti optimu. Zpět, restart, přeskočit za reklamu. Žebříček = dosažený level.

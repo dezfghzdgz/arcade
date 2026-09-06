@@ -42,3 +42,13 @@ button[disabled] { opacity: .4; pointer-events: none; }
 .seg.pour { animation: pour .25s ease; }
 @keyframes pour { from { transform: translateY(-40px); opacity: .3; } to { transform: none; opacity: 1; } }
 .lvl { font-size: 14px; color: var(--dim); font-weight: 800; }
+
+.tubes { position: relative; }
+.tube { transition: transform .22s ease; transform-origin: 50% 90%; }
+.tube.pouring { z-index: 5; }
+.seg { transition: height .28s ease-out; }
+.stream { position: absolute; width: 8px; border-radius: 4px; z-index: 6; pointer-events: none; transform-origin: top; animation: streamIn .12s ease-out; }
+@keyframes streamIn { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+.tube.wobble { animation: wobble .3s ease; }
+@keyframes wobble { 0% { transform: rotate(0); } 30% { transform: rotate(-4deg); } 60% { transform: rotate(3deg); } 100% { transform: rotate(0); } }
+.seg.ghost { opacity: 0; height: 0; }
