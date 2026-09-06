@@ -72,3 +72,4 @@ h2.section { font-size: 18px; color: var(--dim); margin: 28px 0 8px; }
 @media (max-width: 640px) { .cols { display: block; } .colh { display: none; } .cols .col { display: contents; } .grid.one { display: contents; } .card { margin-bottom: 14px; } .card.solo { order: 0; } }
 .sub.small { font-size: 13px; margin: -4px 0 12px; }
 .card .cred { display: block; margin-top: 8px; color: var(--dim); font-size: 12px; font-weight: 700; }
+.credits { max-width: 560px; text-align: center; font-size: 12px; color: var(--dim); line-height: 1.5; margin: 6px 0 0; }
