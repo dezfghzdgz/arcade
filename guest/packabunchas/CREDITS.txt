@@ -1,0 +1,6 @@
+PACKABUNCHAS
+Author: Rémi Vansteelandt (remvst)
+Origin: js13kGames entry (https://js13kgames.com)
+License: MIT (forks report MIT – verify)
+
+MIT License – original copyright notice applies; see the author's repository.

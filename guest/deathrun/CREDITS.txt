@@ -1,0 +1,6 @@
+Platformer by Careless Labs
+Author: Adam Williams (@AdamTheWilliams, Careless Labs)
+Origin: js13kGames entry (https://js13kgames.com)
+License: unknown – ask the author
+
+License not verified – keep only with the author's permission.

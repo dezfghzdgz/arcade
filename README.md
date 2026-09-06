@@ -63,3 +63,6 @@ Po kole mají všichni tlačítko „Hrát znovu" s 20s odpočtem (x/y hlasů). 
 
 ## Přidání vlastní hry napevno
 Složka `nazev/` + záznam v `hub.js → BUILTIN`.
+
+## Hostující hry (`guest/`)
+Sedm her od jiných vývojářů ze soutěže js13kGames, každá ve vlastní složce s `CREDITS.txt`. **Licence:** Q1K3 a UNDERRUN jsou MIT (ověřeno na GitHubu autora), PACKABUNCHAS je podle forků MIT (ověř u autora), u PATH TO GLORY, 666, SPACE a skákačky od Careless Labs licence není známá – než je necháš na webu s reklamami, napiš autorům o svolení (js13kgames.com má u každé hry odkaz na autora). Karty na rozcestníku uvádějí autora a zdroj. Do každé hry je vložen jen malý odkaz „‹ Arcade" vlevo nahoře, kód her je jinak nezměněný.

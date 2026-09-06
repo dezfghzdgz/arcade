@@ -9,7 +9,7 @@
   <link rel="icon" href="icon-192.png" /><link rel="apple-touch-icon" href="icon-192.png" /><link rel="manifest" href="manifest.webmanifest" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="hub.css?v=10" />
+  <link rel="stylesheet" href="hub.css?v=11" />
 </head>
 <body>
   <header class="top">
@@ -36,6 +36,9 @@
     <div id="install" class="install"><span>📲 <b data-i18n="installT">Install Arcade</b> · <span data-i18n="installD">works offline, no wifi needed for solo games</span></span><div class="acts"><button id="btn-install" class="pass hidden" data-i18n="installBtn">Install app</button><button id="btn-offline" data-i18n="offlineBtn">Save games for offline</button><a class="btn-like" href="desktop/README.md" target="_blank" rel="noopener" data-i18n="desktopBtn">Download for PC</a></div></div>
     <div class="cols"><div class="col"><h2 class="colh solo-h" data-i18n="soloH">Offline · solo</h2><div id="games-solo" class="grid one"></div></div><div class="col"><h2 class="colh friends-h" data-i18n="friendsH">Online · with friends</h2><div id="games-friends" class="grid one"></div></div></div>
     <div id="games" class="grid hidden"></div>
+    <h2 class="section" id="guest-h" data-i18n="guest">Guest games (js13kGames)</h2>
+    <p class="sub small" data-i18n="guestNote">Tiny games by other developers, each under 13 kB. Credits on every card.</p>
+    <div id="guest" class="grid"></div>
     <h2 class="section hidden" id="community-h" data-i18n="community">From the community</h2>
     <div id="community" class="grid"></div>
     <div class="foot">
@@ -89,7 +92,7 @@
 
   <script src="config.js?v=10"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-  <script src="hub.js?v=10"></script>
+  <script src="hub.js?v=11"></script>
   <script>
     if ("serviceWorker" in navigator) { navigator.serviceWorker.register("./sw.js", { updateViaCache: "none" }).then(r => { r.update(); setInterval(() => r.update(), 60000); }).catch(() => {});
       // nová verze webu se aktivovala -> jednou obnovit, ať se ukáže hned

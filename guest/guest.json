@@ -1,0 +1,65 @@
+[
+ {
+  "slug": "q1k3",
+  "title": "Q1K3",
+  "author": "Dominic Szablewski (phoboslab)",
+  "license": "MIT",
+  "pc": true,
+  "en": "FPS like Doom in 13 kB. WASD + mouse, click to lock the mouse.",
+  "cs": "FPS jako Doom ve 13 kB. WASD + myš, kliknutím zamkneš myš."
+ },
+ {
+  "slug": "underrun",
+  "title": "UNDERRUN",
+  "author": "Dominic Szablewski (phoboslab)",
+  "license": "MIT",
+  "pc": true,
+  "en": "Top-down shooter in a dark facility. WASD + mouse.",
+  "cs": "Střílečka shora v temném komplexu. WASD + myš."
+ },
+ {
+  "slug": "packabunchas",
+  "title": "PACKABUNCHAS",
+  "author": "Rémi Vansteelandt (remvst)",
+  "license": "MIT (forks report MIT – verify)",
+  "pc": false,
+  "en": "Pack shapes into the rocket before launch. Mouse or touch.",
+  "cs": "Naskládej tvary do rakety před startem. Myš nebo dotyk."
+ },
+ {
+  "slug": "pathtoglory",
+  "title": "PATH TO GLORY",
+  "author": "Rémi Vansteelandt (remvst)",
+  "license": "unknown – ask the author",
+  "pc": true,
+  "en": "Medieval sword fighting, 2D. Keyboard.",
+  "cs": "Středověký boj s mečem, 2D. Klávesnice."
+ },
+ {
+  "slug": "666",
+  "title": "666",
+  "author": "unknown (js13kGames entry)",
+  "license": "unknown – ask the author",
+  "pc": true,
+  "en": "Collect souls in a 3D hell. WASD + mouse.",
+  "cs": "Sbírej duše v 3D pekle. WASD + myš."
+ },
+ {
+  "slug": "space",
+  "title": "SPACE",
+  "author": "Matthew Diamant",
+  "license": "unknown – ask the author",
+  "pc": true,
+  "en": "2D space shooter. Keyboard.",
+  "cs": "2D vesmírná střílečka. Klávesnice."
+ },
+ {
+  "slug": "deathrun",
+  "title": "Platformer by Careless Labs",
+  "author": "Adam Williams (@AdamTheWilliams, Careless Labs)",
+  "license": "unknown – ask the author",
+  "pc": true,
+  "en": "2D platformer where dying doesn't matter. Keyboard.",
+  "cs": "2D skákačka, kde nevadí umírat. Klávesnice."
+ }
+]

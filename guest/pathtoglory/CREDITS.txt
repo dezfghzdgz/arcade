@@ -1,0 +1,6 @@
+PATH TO GLORY
+Author: Rémi Vansteelandt (remvst)
+Origin: js13kGames entry (https://js13kgames.com)
+License: unknown – ask the author
+
+License not verified – keep only with the author's permission.

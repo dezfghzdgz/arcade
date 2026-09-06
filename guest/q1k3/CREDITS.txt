@@ -1,0 +1,6 @@
+Q1K3
+Author: Dominic Szablewski (phoboslab)
+Origin: js13kGames entry (https://js13kgames.com)
+License: MIT
+
+MIT License – original copyright notice applies; see the author's repository.
