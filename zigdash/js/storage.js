@@ -42,7 +42,7 @@ window.Storage = (() => {
   }
 
   // jméno z účtu Arcade (přihlášení na rozcestníku) má přednost, dokud si ho hráč nepřepíše ve hře
-  try { const an = localStorage.getItem("arcade_name"); if (an && (!state.name || state.nameFromHub === true || localStorage.getItem("arcade_name_used") !== an)) { state.name = an.slice(0, 12); set(K.name, state.name); localStorage.setItem("arcade_name_used", an); } } catch {}
+  try { const an = localStorage.getItem("arcade_name"); if (an && (!state.name || state.nameFromHub === true || localStorage.getItem("arcade_name_used_zigdash") !== an)) { state.name = an.slice(0, 12); set(K.name, state.name); localStorage.setItem("arcade_name_used_zigdash", an); } } catch {}
   return {
     active(kind) { return cos[kind].active; },
     setActive(kind, id) { cos[kind].active = id; set(KIND_KEYS[kind][0], id); },

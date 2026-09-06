@@ -1,9 +1,8 @@
 // Kreslení. Barva se drží v malém offscreen plátně (1 pixel = 1 buňka) a jen se zvětšuje – rychlé i na slabém mobilu.
 window.Render = (() => {
-  const { W, H, CELL, GW, GH, R, COLORS } = Sim;
+  const { W, H, R, COLORS } = Sim;
   let canvas, ctx, scale = 1, dpr = 1;
   function setPalette() {}
-  const smooth = new Map();
   let particles = [], rings = [], popups = [], shake = 0, t = 0;
 
   const HATS = {
@@ -66,43 +65,34 @@ window.Render = (() => {
     shake = Math.max(0, shake - dt * 5);
   }
 
-  // ---------- hlavní kreslení. view = {players:[{body,color,name,dir,dead,boost,me}], food, phase, countdown, showMe}
+  // ---------- kreslení. view = {players:[{x,y,w,color,name,me,team}], balls, score, phase, countdown, showMe}
+  const trail = [];
   function draw(view, dt) {
     tickFx(dt);
     ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
     if (shake > 0) ctx.translate((Math.random() - 0.5) * shake * 8, (Math.random() - 0.5) * shake * 8);
     ctx.fillStyle = "#1B1030"; ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = "rgba(255,255,255,.03)"; for (let y = 0; y < GH; y++) for (let x = 0; x < GW; x++) if ((x + y) & 1) ctx.fillRect(x * CELL, y * CELL, CELL, CELL);
-    ctx.strokeStyle = "#FF5E7E"; ctx.lineWidth = 3; ctx.strokeRect(1.5, 1.5, W - 3, H - 3);
-    for (const f of view.food || []) { const x = (f % GW) * CELL + CELL / 2, y = ((f / GW) | 0) * CELL + CELL / 2; ctx.fillStyle = "#FFCF5A"; ctx.beginPath(); ctx.arc(x, y, 3.2 + Math.sin(t * 5 + f) * 0.6, 0, 6.28); ctx.fill(); }
-    for (const p of view.players) { if (p.dead || !p.body || !p.body.length) { smooth.delete(p.name); continue; }
-      // plynulý pohyb: každý článek se dohání ke své cílové buňce (i mezi kroky mřížky)
-      let sm = smooth.get(p.name); if (!sm || sm.n !== p.body.length || Math.abs(sm.pts[0].x - (p.body[0] % GW) * CELL) > CELL * 3 || Math.abs(sm.pts[0].y - ((p.body[0] / GW) | 0) * CELL) > CELL * 3) { sm = { n: p.body.length, pts: p.body.map(c => ({ x: (c % GW) * CELL, y: ((c / GW) | 0) * CELL })) }; smooth.set(p.name, sm); }
-      const k = Math.min(1, dt * (p.boost ? 22 : 13));
-      for (let i = 0; i < p.body.length; i++) { const c = p.body[i], tx = (c % GW) * CELL, ty = ((c / GW) | 0) * CELL, q = sm.pts[i]; q.x += (tx - q.x) * k; q.y += (ty - q.y) * k; }
-      ctx.fillStyle = p.color; ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.strokeStyle = p.color; ctx.lineWidth = CELL - 2.4;
-      ctx.beginPath(); sm.pts.forEach((q, i) => { const x = q.x + CELL / 2, y = q.y + CELL / 2; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); if (sm.pts.length === 1) ctx.lineTo(sm.pts[0].x + CELL / 2 + 0.1, sm.pts[0].y + CELL / 2); ctx.stroke();
-      if (p.boost) { ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(sm.pts[0].x + CELL / 2, sm.pts[0].y + CELL / 2, CELL * 0.75, 0, 6.28); ctx.stroke(); }
-      const hx = sm.pts[0].x + CELL / 2, hy = sm.pts[0].y + CELL / 2, d = [[1, 0], [0, 1], [-1, 0], [0, -1]][p.dir] || [1, 0];
-      ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(hx, hy, CELL * 0.55, 0, 6.28); ctx.fill();
-      ctx.fillStyle = "#1B1030"; for (const s of [-1, 1]) { ctx.beginPath(); ctx.arc(hx + d[0] * 1.5 + d[1] * s * 2.2, hy + d[1] * 1.5 + d[0] * s * 2.2, 1.3, 0, 6.28); ctx.fill(); }
-      ctx.font = "800 9px Nunito, sans-serif"; ctx.textAlign = "center"; ctx.fillStyle = "rgba(255,255,255,.85)"; ctx.fillText(p.name, hx, hy - 8);
-      if (p.me && view.showMe) drawMeArrow({ x: hx, y: hy, meLabel: p.meLabel }, view.showMe);
-    }
+    ctx.fillStyle = "rgba(255,94,126,.08)"; ctx.fillRect(0, H / 2, W, H / 2); ctx.fillStyle = "rgba(94,225,208,.08)"; ctx.fillRect(0, 0, W, H / 2);
+    ctx.setLineDash([10, 10]); ctx.strokeStyle = "rgba(255,255,255,.25)"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, H / 2); ctx.lineTo(W, H / 2); ctx.stroke(); ctx.setLineDash([]);
+    ctx.strokeStyle = "rgba(255,255,255,.15)"; ctx.beginPath(); ctx.arc(W / 2, H / 2, 40, 0, 6.28); ctx.stroke();
+    if (view.score) { ctx.font = "900 64px Nunito, sans-serif"; ctx.textAlign = "center"; ctx.fillStyle = "rgba(94,225,208,.35)"; ctx.fillText(view.score[1], W / 2, H / 2 - 24); ctx.fillStyle = "rgba(255,94,126,.35)"; ctx.fillText(view.score[0], W / 2, H / 2 + 72); }
+    for (const b of view.balls || []) { trail.push({ x: b.x, y: b.y, life: 0.25 }); }
+    for (const tr of trail) { tr.life -= dt; ctx.globalAlpha = Math.max(0, tr.life * 2); ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(tr.x, tr.y, R * 0.7, 0, 6.28); ctx.fill(); } ctx.globalAlpha = 1; while (trail.length && trail[0].life <= 0) trail.shift(); if (trail.length > 40) trail.splice(0, trail.length - 40);
+    for (const b of view.balls || []) { ctx.shadowColor = "#fff"; ctx.shadowBlur = 12; ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(b.x, b.y, R, 0, 6.28); ctx.fill(); ctx.shadowBlur = 0; }
+    for (const p of view.players) { const y = p.y; ctx.fillStyle = "rgba(0,0,0,.35)"; roundRect(p.x - p.w / 2, y - 5 + 3, p.w, 10, 5); ctx.fillStyle = p.color; roundRect(p.x - p.w / 2, y - 5, p.w, 10, 5); ctx.fillStyle = "rgba(255,255,255,.35)"; roundRect(p.x - p.w / 2 + 4, y - 4, p.w - 8, 3, 2); ctx.font = "800 10px Nunito, sans-serif"; ctx.textAlign = "center"; ctx.fillStyle = "rgba(255,255,255,.85)"; ctx.fillText(p.name, p.x, p.team === 1 ? y + 20 : y - 12); if (p.me && view.showMe) drawMeArrow({ x: p.x, y: p.team === 1 ? y + 40 : y - 20, meLabel: p.meLabel }, view.showMe); }
     for (const r of rings) { ctx.globalAlpha = Math.max(0, r.life * 2); ctx.strokeStyle = r.c; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(r.x, r.y, r.r, 0, 6.28); ctx.stroke(); } ctx.globalAlpha = 1;
     for (const p of particles) { ctx.globalAlpha = Math.min(1, p.life / p.max * 1.5); ctx.fillStyle = p.c; ctx.fillRect(p.x - 2, p.y - 2, 4, 4); } ctx.globalAlpha = 1;
     ctx.font = "700 14px Nunito, sans-serif"; ctx.textAlign = "center";
     for (const p of popups) { ctx.globalAlpha = p.life; ctx.fillStyle = p.c; ctx.lineWidth = 3; ctx.strokeStyle = "rgba(0,0,0,.5)"; ctx.strokeText(p.text, p.x, p.y); ctx.fillText(p.text, p.x, p.y); } ctx.globalAlpha = 1;
     if (view.phase === "countdown") { ctx.fillStyle = "rgba(10,6,20,.45)"; ctx.fillRect(0, 0, W, H); ctx.fillStyle = "#fff"; ctx.font = "800 96px Nunito, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(Math.max(1, Math.ceil(view.countdown)), W / 2, H / 2); ctx.textBaseline = "alphabetic"; }
   }
-  function drawMeArrow(p, k) { const bob = Math.sin(t * 8) * 4, y = p.y - 30 + bob, label = p.meLabel || "YOU"; ctx.save(); ctx.globalAlpha = Math.min(1, k); ctx.font = "900 15px Nunito, sans-serif"; ctx.textAlign = "center"; ctx.lineWidth = 4; ctx.strokeStyle = "#1B1030"; ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.moveTo(p.x, y + 10); ctx.lineTo(p.x - 9, y - 2); ctx.lineTo(p.x + 9, y - 2); ctx.closePath(); ctx.fill(); ctx.strokeText(label, p.x, y - 6); ctx.fillText(label, p.x, y - 6); ctx.restore(); }
+  function drawMeArrow(p, k) { const bob = Math.sin(t * 8) * 4, y = p.y - 10 + bob, label = p.meLabel || "YOU"; ctx.save(); ctx.globalAlpha = Math.min(1, k); ctx.font = "900 15px Nunito, sans-serif"; ctx.textAlign = "center"; ctx.lineWidth = 4; ctx.strokeStyle = "#1B1030"; ctx.fillStyle = "#fff"; ctx.strokeText(label, p.x, y); ctx.fillText(label, p.x, y); ctx.restore(); }
   // náhled klobouku do obchodu
   function preview(cv, hat, color, pattern) {
     const c = cv.getContext("2d"); const S = cv.width;
     c.clearRect(0, 0, S, S); c.save(); c.translate(S / 2, S * 0.6); c.scale(S / 36, S / 36);
     const saved = ctx; ctx = c;
-    c.fillStyle = color; for (let i = 0; i < 4; i++) { c.beginPath(); c.roundRect ? c.roundRect(-14 + i * 7 - 3, -3, 7, 7, 2) : c.rect(-14 + i * 7 - 3, -3, 7, 7); c.fill(); }
-    c.fillStyle = "#2B2440"; c.beginPath(); c.arc(9, -1.5, 1.2, 0, 6.28); c.arc(9, 1.5, 1.2, 0, 6.28); c.fill();
+    c.fillStyle = color; c.beginPath(); c.roundRect ? c.roundRect(-14, -3, 28, 6, 3) : c.rect(-14, -3, 28, 6); c.fill(); c.fillStyle = "#fff"; c.beginPath(); c.arc(0, -10, 4, 0, 6.28); c.fill();
     ctx = saved; c.restore();
   }
 

@@ -36,7 +36,7 @@
   const cellOf = (c) => ({ x: c % N, y: (c / N) | 0 });
   const colorAt = (c) => { for (let i = 0; i < ends.length; i++) if (ends[i].includes(c)) return i; return -1; };
   const pathAt = (c) => { for (let i = 0; i < paths.length; i++) if (paths[i].includes(c)) return i; return -1; };
-  function update() { const filled = new Set(paths.flat()).size; $("filled").textContent = Math.round(100 * filled / (N * N)) + "%"; $("hint-n").textContent = hints; if (!over && paths.every((p, i) => p.length && p[0] === ends[i][0] && p[p.length - 1] === ends[i][1]) && filled === N * N) win(); }
+  function update() { const filled = new Set(paths.flat()).size; $("filled").textContent = Math.round(100 * filled / (N * N)) + "%"; $("hint-n").textContent = hints; if (!over && paths.every((p, i) => p.length > 1 && ((p[0] === ends[i][0] && p[p.length - 1] === ends[i][1]) || (p[0] === ends[i][1] && p[p.length - 1] === ends[i][0]))) && filled === N * N) win(); }
   async function win() { over = true; beep(880, 0.25); setTimeout(() => beep(1320, 0.3), 100); solved = Math.max(solved, level); set("fl_solved", solved); setTimeout(async () => { $("over").classList.remove("hidden"); $("over-title").textContent = L("done"); $("over-score").textContent = "✓"; $("over-rank").textContent = ""; const r = await Arc.submit("flow", solved); if (r) $("over-rank").textContent = L("rank", r); }, 500); }
   // kreslení
   function draw() {
@@ -51,13 +51,12 @@
   cv.addEventListener("pointermove", (e) => {
     if (!drag) return; const c = toCell(e); if (c < 0 || c === drag.last) return; const p = paths[drag.i];
     const a = cellOf(drag.last), b = cellOf(c); if (Math.abs(a.x - b.x) + Math.abs(a.y - b.y) !== 1) return;
-    if (p[p.length - 1] === ends[drag.i][0] && p.length > 1 && p.includes(ends[drag.i][1])) return;  // cesta hotová
+    if (p.length > 1 && ends[drag.i].includes(p[0]) && ends[drag.i].includes(p[p.length - 1])) return;  // cesta hotová
     const k = p.indexOf(c); if (k >= 0) { p.length = k + 1; drag.last = c; update(); return; }   // couvání
     const col = colorAt(c); if (col >= 0 && col !== drag.i) return;   // cizí tečka
-    if (p.includes(ends[drag.i][1]) && p[p.length - 1] === ends[drag.i][1] && p[0] === ends[drag.i][0]) return;
     const other = pathAt(c); if (other >= 0 && other !== drag.i) { const op = paths[other]; paths[other] = op.slice(0, op.indexOf(c)); }   // přerušit cizí trubku
     p.push(c); drag.last = c; beep(500 + drag.i * 40, 0.02, "sine", 0.03); update();
-    if (c === ends[drag.i][1] || c === ends[drag.i][0]) { if (p[0] !== c && p.length > 1) { drag = null; beep(700, 0.06); update(); } }
+    if ((c === ends[drag.i][1] || c === ends[drag.i][0]) && p[0] !== c && p.length > 1) { drag = null; beep(700, 0.06); update(); }
   });
   const up = () => { drag = null; }; cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", up);
   function ad(cb) { const ov = document.createElement("div"); ov.className = "overlay"; ov.innerHTML = `<div class="card"><h2>${L("adTitle")}</h2><div class="big-num" id="ad-n">3</div><div class="dim">${L("adNote")}</div><button id="ad-x">${L("close")}</button></div>`; document.body.appendChild(ov); let n = 3; const iv = setInterval(() => { n--; ov.querySelector("#ad-n").textContent = n; if (n <= 0) { clearInterval(iv); ov.remove(); cb(); } }, 1000); ov.querySelector("#ad-x").onclick = () => { clearInterval(iv); ov.remove(); }; }
