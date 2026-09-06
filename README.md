@@ -28,6 +28,8 @@ Ve složce `desktop/` je Electron obal – návod tamtéž (výsledek je `.exe` 
 
 ## Nové hry
 - **Fleet** (`fleet/`) – námořní bitva až pro 8: joystick = kormidlo (loď se otáčí omezenou rychlostí, zrychluje a dojíždí), tlačítko = salva ze obou boků (3 koule na stranu), ostrovy jako překážky, 3 zásahy = ke dnu, respawn 3 s. Módy: Bitva, Flotily (týmy), Král moří (zóna se stěhuje), Poklad (truhly, potopená loď půlku vysype).
+- **Roll** (`roll/`) – kulička jede, dokud nenarazí, a maluje; obarvi všechno. Levely se generují ze seedu (blob s chodbami) a ověřují hledáním nejkratšího řešení – hvězdičky podle počtu tahů proti optimu. Zpět, restart, přeskočit za reklamu. Žebříček = dosažený level.
+- **Tubes** (`tubes/`) – přelévání barev (Water Sort): levely se generují zamícháním vyřešeného stavu zpětnými tahy (vždy řešitelné), počet barev roste s levelem až do 12. Zpět, restart, 3 nápovědy zdarma a další za reklamu, zkumavka navíc za reklamu.
 - **Solitaire** (`solitaire/`) – Klondike po 1/po 3/denní, tap = výběr a přesun, dvojklik = nahoru, tažení, zpět, automatické dohrání, žebříček časů.
 - **Boom** má 5 módů: Klasika, Chaos (2 bomby), Zóna (aréna se zmenšuje), Týmy (bombu jen soupeři), Lovec (bomba nebouchá, kdo ji drží, sbírá body, 60 s).
 - **Boom** (`boom/`) – horký brambor až pro 8: bomba se předává dotykem, dash = odraz/únik, komu bouchne, vypadá; poslední bere 3 body, první na 6 vyhrává. Mód Chaos = dvě bomby.
