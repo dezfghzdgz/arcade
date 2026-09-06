@@ -78,6 +78,7 @@ window.Render = (() => {
     ctx.imageSmoothingEnabled = true;
 
     // překážky
+    if (view.inset > 0) { ctx.fillStyle = "rgba(255,94,126,.25)"; ctx.fillRect(0, 0, W, view.inset); ctx.fillRect(0, H - view.inset, W, view.inset); ctx.fillRect(0, 0, view.inset, H); ctx.fillRect(W - view.inset, 0, view.inset, H); ctx.strokeStyle = "#FF5E7E"; ctx.lineWidth = 3; ctx.setLineDash([8, 6]); ctx.lineDashOffset = -t * 20; ctx.strokeRect(view.inset, view.inset, W - 2 * view.inset, H - 2 * view.inset); ctx.setLineDash([]); }
     for (const o of view.obstacles) { ctx.fillStyle = "#12091F";
       ctx.fillStyle = "#0F0A1C"; roundRect(o.x, o.y, o.w, o.h, 6);
       ctx.fillStyle = "rgba(255,255,255,.12)"; roundRect(o.x + 3, o.y + 3, o.w - 6, 5, 3);

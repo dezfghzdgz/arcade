@@ -6,7 +6,7 @@ window.Sim = (() => {
 
   const COLORS = ["#FF5E7E", "#5EE1D0", "#FFCF5A", "#8A5CFF", "#B6FF5A", "#FF9A3C", "#6FC3FF", "#FF7AD9"];
   const TEAM_COLORS = ["#FF5E7E", "#5EE1D0"];
-  const MODES = { classic: { teams: false }, chaos: { teams: false } };
+  const MODES = { classic: { teams: false }, chaos: { teams: false }, shrink: { teams: false }, teams: { teams: true }, hunter: { teams: false } };
   // schopnosti (power-upy) a jejich váha při spawnu
   const POWERUPS = { bomb: 4, speed: 3, shield: 3, giant: 2, gun: 3, freeze: 2, frenzy: 2 };
   // frekvence schopností (sekundy mezi spawny) podle nastavení
@@ -126,18 +126,23 @@ window.Sim = (() => {
     w.time -= dt;
     if (w.time <= 0) { w.time = 0; w.phase = "end"; w.events.push({ t: "end" }); w.results = results(w); return; }
     w.roundT = (w.roundT || 0) + dt;
+    if (w.mode === "shrink") { w.inset = Math.min(Math.min(W, H) / 2 - 40, Math.max(0, (w.roundT - 6) * 9)); for (const p of w.players) if (p.dead <= 0 && (p.x < w.inset || p.x > W - w.inset || p.y < w.inset || p.y > H - w.inset)) { p.dead = 1e9; p.deaths++; w.events.push({ t: "boom", id: p.id, x: p.x, y: p.y, zone: true }); const b = w.bombs.find(b => b.holder === p.id); if (b) { const al = w.players.filter(q => q.dead <= 0 && !holding(w, q)); if (al.length) b.holder = al[Math.floor(Math.random() * al.length)].id; else w.bombs = w.bombs.filter(x => x !== b); } } }
+    if (w.mode === "hunter") { for (const b of w.bombs) { const h = w.players.find(p => p.id === b.holder); if (h && h.dead <= 0) { h.score += dt * 0.5; b.fuse = 999; } } if (w.roundT > 60) { w.phase = "end"; w.events.push({ t: "end" }); w.results = results(w); return; } }
     for (const b of w.bombs) { b.fuse -= dt; b.beep = (b.beep || 0) - dt; if (b.beep <= 0) { b.beep = Math.max(0.12, b.fuse / 6); w.events.push({ t: "beep", id: b.holder, fast: b.fuse < 3 }); } }
     for (const p of w.players) { if (p.dead > 0) continue; if (p.bot) botThink(w, p, dt); movePlayer(w, p, dt); }
     for (let i = 0; i < w.players.length; i++) for (let j = i + 1; j < w.players.length; j++) collide(w, w.players[i], w.players[j]);
     for (const p of w.players) if (p.dead <= 0) unstick(w, p);
     for (const b of w.bombs) if (b.fuse <= 0) explode(w, b);
     const alive = w.players.filter(p => p.dead <= 0);
+    if (w.mode === "hunter") return;
+    if (w.teams) { const teamsAlive = new Set(alive.map(p => p.team)); if (teamsAlive.size <= 1 && w.players.length > 1) { const t = [...teamsAlive][0]; for (const p of w.players) if (p.team === t) { p.score += 3; p.wins++; } w.events.push({ t: "teamRound", team: t }); if (w.players.some(p => p.score >= T.winPoints)) { w.phase = "end"; w.events.push({ t: "end" }); w.results = results(w); return; } w.countdown = 2.5; w.phase = "countdown"; w.events.push({ t: "newRound" }); } return; }
     if (alive.length <= 1 && w.players.length > 1) { const win = alive[0]; if (win) { win.score += 3; win.wins++; w.events.push({ t: "roundWin", id: win.id }); } if (w.players.some(p => p.score >= T.winPoints)) { w.phase = "end"; w.events.push({ t: "end" }); w.results = results(w); return; } w.countdown = 2.5; w.phase = "countdown"; w.events.push({ t: "newRound" }); }
   }
   function startRound(w) {
-    w.round = (w.round || 0) + 1; w.roundT = 0; w.bombs = [];
+    w.round = (w.round || 0) + 1; w.roundT = 0; w.bombs = []; w.inset = 0;
     w.players.forEach((p, i) => { placeAtStart(w, p, i); p.dead = 0; p.stun = 0; p.dash = 0; p.dashCd = 0; p.passCd = 0; p.vx = p.vy = 0; });
     const n = w.mode === "chaos" ? 2 : 1;
+    if (w.mode === "hunter") { const c = w.players[Math.floor(Math.random() * w.players.length)]; w.bombs.push({ holder: c.id, fuse: 999, beep: 0 }); return; }
     const cand = [...w.players].sort(() => Math.random() - 0.5).slice(0, n);
     for (const c of cand) w.bombs.push({ holder: c.id, fuse: T.fuseMin + Math.random() * (T.fuseMax - T.fuseMin), beep: 0 });
   }
@@ -170,6 +175,7 @@ window.Sim = (() => {
     for (const bomb of w.bombs) {
       const from = bomb.holder === a.id ? a : bomb.holder === b.id ? b : null; if (!from) continue; const to = from === a ? b : a;
       if (from.passCd > 0 || holding(w, to)) continue;
+      if (w.teams && from.team === to.team) continue;
       bomb.holder = to.id; to.passCd = T.passCd; from.passCd = T.passCd; to.stun = Math.max(to.stun, 0.25); w.events.push({ t: "pass", from: from.id, to: to.id, x: to.x, y: to.y });
     }
     if (a.dash > 0 && !holding(w, a) && b.dash <= 0) { b.vx = nx * 300; b.vy = ny * 300; b.stun = Math.max(b.stun, 0.3); }
@@ -181,7 +187,10 @@ window.Sim = (() => {
     const alive = w.players.filter(o => o !== p && o.dead <= 0);
     if (!alive.length) { p.input.dx = p.input.dy = 0; return; }
     let dx = 0, dy = 0;
-    if (holding(w, p)) { let t = null, td = 1e9; for (const o of alive) { const d = Math.hypot(o.x - p.x, o.y - p.y) + (o.passCd > 0 ? 200 : 0); if (d < td) { td = d; t = o; } } dx = t.x - p.x; dy = t.y - p.y; const d = Math.hypot(dx, dy) || 1; dx /= d; dy /= d; if (d < 60 && p.dashCd <= 0 && Math.random() < 0.2 + sk * 0.6) p.input.dash = true; }
+    if (w.mode === "hunter" && holding(w, p)) { for (const o of alive) { const d = Math.hypot(p.x - o.x, p.y - o.y) || 1; dx += (p.x - o.x) / d / Math.max(0.2, d / 120); dy += (p.y - o.y) / d / Math.max(0.2, d / 120); } dx += (W / 2 - p.x) / W * 0.6; dy += (H / 2 - p.y) / H * 0.6; const l = Math.hypot(dx, dy) || 1; p.input.dx = dx / l; p.input.dy = dy / l; return; }
+    if (w.mode === "hunter") { const h = alive.find(o => holding(w, o)); if (h) { dx = h.x - p.x; dy = h.y - p.y; const d = Math.hypot(dx, dy) || 1; p.input.dx = dx / d; p.input.dy = dy / d; if (d < 60 && p.dashCd <= 0 && Math.random() < sk) p.input.dash = true; return; } }
+    if (w.mode === "shrink") { const m = Math.min(p.x, W - p.x, p.y, H - p.y) - (w.inset || 0); if (m < 40) { const c = W / 2 - p.x, cy2 = H / 2 - p.y, l = Math.hypot(c, cy2) || 1; p.input.dx = c / l; p.input.dy = cy2 / l; return; } }
+    if (holding(w, p)) { let t = null, td = 1e9; for (const o of alive) { if (w.teams && o.team === p.team) continue; const d = Math.hypot(o.x - p.x, o.y - p.y) + (o.passCd > 0 ? 200 : 0); if (d < td) { td = d; t = o; } } if (!t) { p.input.dx = p.input.dy = 0; return; } dx = t.x - p.x; dy = t.y - p.y; const d = Math.hypot(dx, dy) || 1; dx /= d; dy /= d; if (d < 60 && p.dashCd <= 0 && Math.random() < 0.2 + sk * 0.6) p.input.dash = true; }
     else { for (const o of alive) if (holding(w, o)) { const d = Math.hypot(p.x - o.x, p.y - o.y) || 1; const wgt = 1 / Math.max(0.2, d / 120); dx += (p.x - o.x) / d * wgt; dy += (p.y - o.y) / d * wgt; }
       // od stěn a překážek pryč, ať se nezasekne v rohu
       dx += (W / 2 - p.x) / W * 0.6; dy += (H / 2 - p.y) / H * 0.6;
@@ -199,7 +208,7 @@ window.Sim = (() => {
   }
   function results(w) {
     const rows = coverage(w);
-    rows.forEach(r => { const p = w.players.find(q => q.id === r.id); r.score = p.score; r.wins = p.wins; });
+    rows.forEach(r => { const p = w.players.find(q => q.id === r.id); r.score = Math.round(p.score * 10) / 10; r.wins = p.wins; });
     rows.sort((a, b) => b.score - a.score);
     rows.forEach((r, i) => { r.rank = i + 1; r.value = r.score; r.coins = r.bot ? 0 : Math.round(10 + Math.min(60, r.score * 4) + (i === 0 ? 25 : i === 1 ? 10 : 0)); r.win = i === 0; });
     return rows;

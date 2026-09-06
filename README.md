@@ -23,7 +23,13 @@ Tok: hráč se přihlásí → „Submit a game" (název, popis, odkaz na hru ho
 ## Appka a offline
 Web je PWA: na rozcestníku je tlačítko **Nainstalovat** (Chrome/Edge na PC i Androidu; na iPhonu Sdílet → Přidat na plochu) a **Uložit hry pro offline** – service worker (`sw.js`) stáhne všechny hry do cache. Sólo hry pak fungují úplně bez internetu, online hry se načtou, ale na hraní potřebují síť. Po každém nasazení nové verze zvedni `VERSION` v `sw.js`, aby se cache obnovila.
 
+## Program na PC
+Ve složce `desktop/` je Electron obal – návod tamtéž (výsledek je `.exe` instalátor / přenosné exe, na Macu `.dmg`). Hotové soubory nahraj do GitHub Releases a odkaz dej na rozcestník.
+
 ## Nové hry
+- **Fleet** (`fleet/`) – námořní bitva až pro 8: joystick = kormidlo (loď se otáčí omezenou rychlostí, zrychluje a dojíždí), tlačítko = salva ze obou boků (3 koule na stranu), ostrovy jako překážky, 3 zásahy = ke dnu, respawn 3 s. Módy: Bitva, Flotily (týmy), Král moří (zóna se stěhuje), Poklad (truhly, potopená loď půlku vysype).
+- **Solitaire** (`solitaire/`) – Klondike po 1/po 3/denní, tap = výběr a přesun, dvojklik = nahoru, tažení, zpět, automatické dohrání, žebříček časů.
+- **Boom** má 5 módů: Klasika, Chaos (2 bomby), Zóna (aréna se zmenšuje), Týmy (bombu jen soupeři), Lovec (bomba nebouchá, kdo ji drží, sbírá body, 60 s).
 - **Boom** (`boom/`) – horký brambor až pro 8: bomba se předává dotykem, dash = odraz/únik, komu bouchne, vypadá; poslední bere 3 body, první na 6 vyhrává. Mód Chaos = dvě bomby.
 - **Doodle** (`doodle/`) – tichá pošta: napiš → nakresli → uhodni, 2–10 hráčů, alba na konci. Hostitel ovládá ukazování alb.
 - **Merge** (`merge/`) – sólo 2048 s denní výzvou (stejný seed pro všechny) a globálním žebříčkem. Žebříček potřebuje **`SETUP2.sql`** (obecná tabulka pro další hry).
