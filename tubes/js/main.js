@@ -44,9 +44,10 @@
       const fillTop = rb.bottom - (tubes[b].length - n) * rb.height * 0.25;
       const st = document.createElement("div"); st.className = "stream"; st.style.background = COLORS[c]; st.style.left = (mouthX - rbox.left - 4) + "px"; st.style.top = (mouthY - rbox.top) + "px"; st.style.height = Math.max(8, fillTop - mouthY - 6) + "px"; box.appendChild(st);
       srcSegs.forEach(sg => sg.style.height = "0%"); added.forEach(sg => { sg.classList.remove("ghost"); sg.style.height = "25%"; sg.style.opacity = "1"; }); beep(500 + c * 40, 0.25, "sine", 0.05);
-      setTimeout(() => { st.remove(); ea.style.transform = ""; ea.style.transformOrigin = ""; ea.classList.remove("pouring"); eb.classList.add("wobble"); setTimeout(() => { busy = false; render(); if (tubes.every(isDone)) win(); }, 230); }, 340);
+      setTimeout(() => { st.remove(); ea.style.transform = ""; ea.style.transformOrigin = ""; ea.classList.remove("pouring"); setTimeout(() => { busy = false; render(); if (tubes.every(isDone)) win(); }, 120); }, 340);
     }, 240);
   }
+  async function win() { beep(880, 0.25); setTimeout(() => beep(1320, 0.3), 100); solved = Math.max(solved, level); set("tb_solved", solved); $("over").classList.remove("hidden"); $("over-title").textContent = L("done"); $("over-score").textContent = "🧪"; $("over-rank").textContent = L("movesIn", moves); const r = await Arc.submit("tubes", solved); if (r) $("over-rank").textContent += " · " + L("rank", r); }
   function render() {
     const box = $("tubes"); box.innerHTML = "";
     tubes.forEach((t, i) => { const d = document.createElement("div"); d.className = "tube" + (i === sel ? " sel" : "") + (t.length === CAP && isDone(t) ? " done" : ""); t.forEach((c) => { const s = document.createElement("div"); s.className = "seg"; s.style.background = COLORS[c]; d.appendChild(s); }); d.onclick = () => tap(i); box.appendChild(d); });
