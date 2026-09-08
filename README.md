@@ -66,3 +66,15 @@ Složka `nazev/` + záznam v `hub.js → BUILTIN`.
 
 ## Hostující hry (`guest/`)
 Sedm her od jiných vývojářů ze soutěže js13kGames, každá ve vlastní složce s `CREDITS.txt`. **Licence:** Q1K3 a UNDERRUN jsou MIT (ověřeno na GitHubu autora), PACKABUNCHAS je podle forků MIT (ověř u autora), u PATH TO GLORY, 666, SPACE a skákačky od Careless Labs licence není známá – než je necháš na webu s reklamami, napiš autorům o svolení (js13kgames.com má u každé hry odkaz na autora). Karty na rozcestníku uvádějí autora a zdroj. Do každé hry je vložen jen malý odkaz „‹ Arcade" vlevo nahoře, kód her je jinak nezměněný.
+
+## Rozcestník ve stylu herního portálu
+Dlaždice s velkými náhledy, hledání, přepínač Vše / Sólo / S kamarády, kategorie (Akce, Hlavolamy, Arkády, Strategie, Párty, Sport, Karty). Kategorie hry je v `hub.js → BUILTIN → cat`.
+
+## Arcade Rating (`SETUP4.sql`)
+Každá dohraná hra přičte přihlášenému hráči body (sólo: 5–30 podle skóre, časové hry 15; online: polovina získaných mincí; Doodle 15, Party 20). Server omezuje 60 bodů na hru a 40 zápisů za hodinu. Hodnosti: Bronze 0 · Silver 300 · Gold 1000 · Platinum 2500 · Diamond 6000 · Elite 15000. Žebříček (top 100 + tvoje pořadí) je pod tlačítkem ★ Rating. Body posílá `rating.js` (vložený ve všech hrách).
+
+## Jak legálně přidat cizí hry
+- **GameDistribution / GameMonetize / GamePix** – katalogy tisíců HTML5 her s oficiálním embedem (iframe) a podílem z reklam; po registraci dostaneš odkazy, které stačí přidat do `BUILTIN` s `url` (otevře se ve stejné kartě). Tohle je cesta, jak fungují CrazyGames i Poki.
+- **Open-source hry s MIT/GPL licencí** (GitHub, js13kGames s uvedenou licencí) – kopírovat lze s uvedením autora.
+- **Vlastní tvůrci přes „Poslat hru"** – hráči ti hry pošlou, ty schválíš (už funguje).
+- Bez licence/svolení hry nekopíruj – u webu s reklamami to autoři řeší.

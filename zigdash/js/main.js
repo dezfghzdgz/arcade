@@ -61,6 +61,7 @@
       Music.stop();
       setTimeout(() => show("over"), 550);
       // skóre do žebříčku
+      if (window.Rating) Rating.add("zigdash", Math.min(30, 5 + Math.floor(score / 20)));
       submitting = Leaderboard.submit(score).then(rank => {
         if (rank) $("over-rank").textContent = Lang("worldRank", rank);
         return rank;

@@ -85,7 +85,7 @@
   $("btn-again").onclick = () => newGame();
   const sbOk = () => !!CFG.supabaseUrl;
   const hdr = () => ({ "Content-Type": "application/json", apikey: CFG.supabaseAnonKey, Authorization: "Bearer " + CFG.supabaseAnonKey });
-  async function submitScore(s) { if (!sbOk() || s <= 0) return null; try { const r = await fetch(CFG.supabaseUrl + "/rest/v1/rpc/submit_score_game", { method: "POST", headers: hdr(), body: JSON.stringify({ p_game: "merge_" + mode, p_device: device, p_name: (name || "Player").slice(0, 12), p_score: s }) }); return r.ok ? await r.json() : null; } catch { return null; } }
+  async function submitScore(s) { if (window.Rating) Rating.add("merge", Math.min(30, 5 + Math.floor(s / 200))); if (!sbOk() || s <= 0) return null; try { const r = await fetch(CFG.supabaseUrl + "/rest/v1/rpc/submit_score_game", { method: "POST", headers: hdr(), body: JSON.stringify({ p_game: "merge_" + mode, p_device: device, p_name: (name || "Player").slice(0, 12), p_score: s }) }); return r.ok ? await r.json() : null; } catch { return null; } }
   async function openLb() {
     $("lb").classList.remove("hidden"); $("name-input").value = name; const list = $("lb-list"); list.innerHTML = ""; const st = $("lb-status");
     if (!sbOk()) { st.textContent = L("offline"); return; }

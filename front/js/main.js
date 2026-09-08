@@ -325,6 +325,7 @@
   // ---------- výsledky
   function endRound(results) {
     phase = "results"; hostLoopStop(); myResult = results.find(r => r.id === Net.myId);
+    if (myResult && window.Rating) Rating.add("front", Math.round(myResult.coins / 2));
     if (myResult) { Storage.addCoins(myResult.coins); const st = Storage.stats; Storage.setStats({ games: st.games + 1, wins: st.wins + (myResult.win ? 1 : 0), best: Math.max(st.best, myResult.pct) }); Missions.afterGame(myResult, runStats); setTimeout(() => myResult.win ? Audio2.win() : Audio2.lose(), 400); }
     const top = results[0];
     $("res-title").textContent = myResult && myResult.win ? Lang("youWin") : Lang("winner", top.name);

@@ -147,7 +147,7 @@
   $("r-next").onclick = () => { if (role !== "host" || !game) return; const ch = game.chains[reveal.chain]; if (reveal.step < ch.entries.length - 1) reveal.step++; else if (reveal.chain < game.chains.length - 1) { reveal.chain++; reveal.step = 0; } else { endGame(); return; } broadcastReveal(); };
   function endGame() { Net.send("end", {}); showResults(); }
   Net.on("end", () => { if (role === "client") showResults(); });
-  function showResults() { phase = "results"; show("results"); Storage.addGame(); Audio2.win(); startAgain(); }
+  function showResults() { phase = "results"; show("results"); Storage.addGame(); if (window.Rating) Rating.add("doodle", 15); Audio2.win(); startAgain(); }
 
   // ---------- hrát znovu
   let againVotes = new Set(), againLeft = 0, againTick = null;

@@ -322,6 +322,7 @@
   function endRound(results) {
     phase = "results"; hostLoopStop();
     myResult = results.find(r => r.id === Net.myId);
+    if (myResult && window.Rating) Rating.add("tower", Math.round(myResult.coins / 2));
     if (myResult) {
       Storage.addCoins(myResult.coins);
       const st = Storage.stats; Storage.setStats({ games: st.games + 1, wins: st.wins + (myResult.win ? 1 : 0), best: Math.max(st.best, myResult.floor) });
