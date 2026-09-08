@@ -1,7 +1,7 @@
 // Service worker Arcade: rozcestník a sólo hry fungují offline. Online hry se načtou z cache, na hraní potřebují síť.
-const VERSION = "arcade-v13";
+const VERSION = "arcade-v14";
 const GAMES = ["zigdash", "merge", "snake", "mines", "bricks", "sudoku", "solitaire", "roll", "tubes", "flow", "splatz", "tower", "front", "doodle", "boom", "fleet", "snakes", "party", "pong"];
-const SHELL = ["./", "./hub.css", "./hub.js", "./config.js", "./rating.js", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
+const SHELL = ["./", "./hub.css", "./hub.js", "./config.js", "./rating.js", "./play.html", "./catalog.json", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
 const norm = (u) => { const url = new URL(u, self.location.href); url.search = ""; if (url.pathname.endsWith("/index.html")) url.pathname = url.pathname.slice(0, -10); return url.href; };
 self.addEventListener("install", (e) => { e.waitUntil((async () => { const c = await caches.open(VERSION); for (const u of SHELL) { try { const r = await fetch(u, { cache: "no-cache" }); if (r.ok) await c.put(norm(u), r); } catch {} } await self.skipWaiting(); })()); });
 self.addEventListener("activate", (e) => { e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== VERSION).map(k => caches.delete(k)))).then(() => self.clients.claim()).then(async () => { (await self.clients.matchAll({ type: "window" })).forEach(cl => cl.postMessage({ t: "updated", v: VERSION })); })); });

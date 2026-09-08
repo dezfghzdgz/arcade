@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" /><meta name="theme-color" content="#160B2E" />
+  <title>Arcade</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #160B2E; color: #F7F1FF; font-family: "Nunito", system-ui, sans-serif; }
+    .bar { position: fixed; top: 0; left: 0; right: 0; height: 40px; display: flex; align-items: center; gap: 10px; padding: 0 12px; background: #24124A; z-index: 5; font-weight: 800; font-size: 14px; }
+    .bar a { color: #B9A8D9; text-decoration: none; padding: 5px 10px; border-radius: 999px; background: rgba(255,255,255,.06); } .bar a:hover { color: #fff; }
+    .bar b { flex: 1; text-align: center; } .bar .fs { cursor: pointer; }
+    iframe { position: fixed; top: 40px; left: 0; width: 100%; height: calc(100% - 40px); border: 0; background: #000; }
+    .warn { position: fixed; top: 40px; left: 0; right: 0; padding: 20px; text-align: center; font-weight: 700; }
+  </style>
+</head>
+<body>
+  <div class="bar"><a href="./">‹ Arcade</a><b id="t"></b><span class="fs" id="fs">⛶</span></div>
+  <div id="warn" class="warn" hidden>Missing game URL.</div>
+  <iframe id="f" allow="fullscreen; autoplay; gamepad; accelerometer; gyroscope" allowfullscreen referrerpolicy="origin"></iframe>
+  <script>
+    const q = new URLSearchParams(location.search), url = q.get("url"), title = q.get("title") || "";
+    document.getElementById("t").textContent = title; document.title = title ? title + " · Arcade" : "Arcade";
+    if (url && /^https?:\/\//.test(url)) document.getElementById("f").src = url; else document.getElementById("warn").hidden = false;
+    document.getElementById("fs").onclick = () => { const f = document.getElementById("f"); (f.requestFullscreen || f.webkitRequestFullscreen).call(f); };
+  </script>
+</body>
+</html>

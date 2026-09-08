@@ -85,15 +85,18 @@
     const a = document.createElement("a"); a.className = "tile"; a.href = g.url; if (community) { a.target = "_blank"; a.rel = "noopener"; }
     const img = g.icon || g.icon_url || "";
     a.innerHTML = `<img src="${img}" alt="" loading="lazy" onerror="this.style.display='none'" /><div class="b"><span class="${g.kind === "solo" ? "s" : "f"}">${g.kind === "solo" ? L("solo") : L("friends")}</span>${g.pc ? `<span class="p">PC</span>` : ""}</div><div class="t"></div>`;
-    a.querySelector(".t").textContent = g.title; a.title = community ? g.description : (L(g.slug) === g.slug ? L("g_" + g.slug) : L(g.slug));
+    a.querySelector(".t").textContent = g.title; a.title = community ? g.description : (g.desc || (L(g.slug) === g.slug ? (L("g_" + g.slug) === "g_" + g.slug ? "" : L("g_" + g.slug)) : L(g.slug)));
     if (g.pc && matchMedia("(pointer: coarse)").matches) { a.classList.add("locked"); a.removeAttribute("href"); }
     if (g.slug === "party") a.classList.add("big");
     return a;
   }
-  const matches = (g) => (fWho === "all" || g.kind === fWho) && (fCat === "all" || g.cat === fCat) && (!fText || (g.title + " " + (L(g.slug) === g.slug ? L("g_" + g.slug) : L(g.slug))).toLowerCase().includes(fText));
+  const matches = (g) => (fWho === "all" || g.kind === fWho) && (fCat === "all" || g.cat === fCat) && (!fText || (g.title + " " + (g.desc || L(g.slug) || "")).toLowerCase().includes(fText));
   function renderChips() { const c = $("cat-chips"); c.innerHTML = ""; for (const k of CATS) { const b = document.createElement("button"); b.textContent = L("cat_" + k); b.className = k === fCat ? "active" : ""; b.onclick = () => { fCat = k; renderChips(); renderGames(); }; c.appendChild(b); } }
+  let EXTRA = [], catalogLoaded = false;
+  async function loadCatalog() { if (catalogLoaded) return; catalogLoaded = true; try { const r = await fetch("catalog.json?v=" + Date.now()); const j = await r.json(); EXTRA = (j.games || []).filter(g => !g.hidden).map(g => Object.assign({}, g, { url: g.embed ? `play.html?url=${encodeURIComponent(g.embed)}&title=${encodeURIComponent(g.title)}` : g.url })); renderGames(); } catch {} }
   async function renderGames() {
-    const grid = $("games-all"); grid.innerHTML = ""; BUILTIN.filter(matches).forEach(g => grid.appendChild(tile(g, false)));
+    loadCatalog();
+    const grid = $("games-all"); grid.innerHTML = ""; BUILTIN.concat(EXTRA).filter(matches).forEach(g => grid.appendChild(tile(g, false)));
     if (!fText && fCat === "all") { const add = document.createElement("div"); add.className = "tile add"; add.innerHTML = `<div><div class="plus">+</div><div></div></div>`; add.querySelector("div div:last-child").textContent = L("submitGame"); add.onclick = () => { if (!user) { openAuth(); return; } showPage("submit"); }; grid.appendChild(add); }
     if (!sb) return;
     const { data } = await sb.from("games").select("*").order("created_at", { ascending: false });

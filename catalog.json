@@ -1,0 +1,6 @@
+{
+  "_help": "Sem přidávej další hry bez zásahu do kódu. kind: solo | friends. cat: action | puzzle | arcade | strategy | party | sports | cards. Buď 'url' (hra hostovaná v této složce nebo kdekoli) nebo 'embed' (cizí hra v iframe přes play.html, např. z GameDistribution). 'pc': true = jen PC. 'icon' = čtvercový obrázek.",
+  "games": [
+    { "slug": "example-embed", "title": "Ukázka embedu (smaž)", "kind": "solo", "cat": "arcade", "embed": "https://html5.gamedistribution.com/", "icon": "icon-192.png", "by": "GameDistribution", "hidden": true }
+  ]
+}
