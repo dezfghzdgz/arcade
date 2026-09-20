@@ -19,3 +19,5 @@
 .big-lv { width: 64px; height: 64px; border-radius: 50%; background: var(--amber); color: #2A1600; display: grid; place-items: center; font-size: 28px; font-weight: 900; }
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 10px; margin: 14px 0; } .stats div { background: rgba(255,255,255,.06); border-radius: 12px; padding: 10px; text-align: center; } .stats b { display: block; font-size: 18px; } .stats small { color: var(--dim); font-size: 11px; }
 .row { display: flex; gap: 8px; }
+.tile .b .n { background: var(--coral); color: #fff; }
+.shop-tabs { grid-column: 1 / -1; flex-wrap: wrap; } .shop-tabs button { font-size: 12px; padding: 6px 12px; } .shop-tabs button.active { background: var(--aqua); color: #062522; }

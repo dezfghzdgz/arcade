@@ -11,19 +11,43 @@ window.Meta = (() => {
 
   // ---------- skiny (fungují i offline z cache)
   const SHOP = {
-    ball_neon:   { slot: "ball", name: { en: "Neon ball", cs: "Neonová kulička" }, color: "#5EE1D0", glow: "#5EE1D0" },
-    ball_lava:   { slot: "ball", name: { en: "Lava ball", cs: "Lávová kulička" }, color: "#FF5E7E", glow: "#FF9A3C" },
-    ball_galaxy: { slot: "ball", name: { en: "Galaxy ball", cs: "Galaktická kulička" }, color: "#8A5CFF", glow: "#6FC3FF" },
-    ball_gold:   { slot: "ball", name: { en: "Gold ball (Pass)", cs: "Zlatá kulička (Pass)" }, color: "#FFCF5A", glow: "#FFE9A3" },
-    name_aqua:   { slot: "name", name: { en: "Aqua name", cs: "Tyrkysové jméno" }, color: "#5EE1D0" },
-    name_coral:  { slot: "name", name: { en: "Coral name", cs: "Korálové jméno" }, color: "#FF5E7E" },
-    name_gold:   { slot: "name", name: { en: "Gold name", cs: "Zlaté jméno" }, color: "#FFCF5A" },
-    name_rainbow:{ slot: "name", name: { en: "Rainbow name (Pass)", cs: "Duhové jméno (Pass)" }, color: "linear-gradient(90deg,#FF5E7E,#FFCF5A,#B6FF5A,#5EE1D0,#8A5CFF)" },
-    trail_sparkle:{ slot: "trail", name: { en: "Sparkle trail", cs: "Jiskřivá stopa" }, color: "#fff" },
-    trail_fire:  { slot: "trail", name: { en: "Fire trail", cs: "Ohnivá stopa" }, color: "#FF9A3C" },
-    badge_star:  { slot: "badge", name: { en: "Star badge", cs: "Odznak hvězda" }, icon: "★" },
-    badge_crown: { slot: "badge", name: { en: "Crown badge", cs: "Odznak koruna" }, icon: "👑" },
+    ball_neon:    { slot: "ball", price: 150, name: { en: "Neon ball", cs: "Neonová kulička" }, color: "#5EE1D0", glow: "#5EE1D0" },
+    ball_lava:    { slot: "ball", price: 300, name: { en: "Lava ball", cs: "Lávová kulička" }, color: "#FF5E7E", glow: "#FF9A3C" },
+    ball_galaxy:  { slot: "ball", price: 600, name: { en: "Galaxy ball", cs: "Galaktická kulička" }, color: "#8A5CFF", glow: "#6FC3FF" },
+    ball_lime:    { slot: "ball", price: 200, name: { en: "Lime ball", cs: "Limetková kulička" }, color: "#B6FF5A", glow: "#B6FF5A" },
+    ball_ice:     { slot: "ball", price: 450, name: { en: "Ice ball", cs: "Ledová kulička" }, color: "#CFF6FF", glow: "#6FC3FF" },
+    ball_gold:    { slot: "ball", price: 0, pass: true, name: { en: "Gold ball (Pass)", cs: "Zlatá kulička (Pass)" }, color: "#FFCF5A", glow: "#FFE9A3" },
+    name_aqua:    { slot: "name", price: 100, name: { en: "Aqua name", cs: "Tyrkysové jméno" }, color: "#5EE1D0" },
+    name_coral:   { slot: "name", price: 100, name: { en: "Coral name", cs: "Korálové jméno" }, color: "#FF5E7E" },
+    name_lime:    { slot: "name", price: 100, name: { en: "Lime name", cs: "Limetkové jméno" }, color: "#B6FF5A" },
+    name_violet:  { slot: "name", price: 150, name: { en: "Violet name", cs: "Fialové jméno" }, color: "#B98CFF" },
+    name_gold:    { slot: "name", price: 500, name: { en: "Gold name", cs: "Zlaté jméno" }, color: "#FFCF5A" },
+    name_fire:    { slot: "name", price: 800, name: { en: "Fire name", cs: "Ohnivé jméno" }, color: "linear-gradient(90deg,#FF5E7E,#FF9A3C,#FFCF5A)" },
+    name_ocean:   { slot: "name", price: 800, name: { en: "Ocean name", cs: "Oceánové jméno" }, color: "linear-gradient(90deg,#5EE1D0,#6FC3FF,#8A5CFF)" },
+    name_rainbow: { slot: "name", price: 0, pass: true, name: { en: "Rainbow name (Pass)", cs: "Duhové jméno (Pass)" }, color: "linear-gradient(90deg,#FF5E7E,#FFCF5A,#B6FF5A,#5EE1D0,#8A5CFF)" },
+    trail_sparkle:{ slot: "trail", price: 250, name: { en: "Sparkle trail", cs: "Jiskřivá stopa" }, color: "#fff", icon: "✦" },
+    trail_fire:   { slot: "trail", price: 400, name: { en: "Fire trail", cs: "Ohnivá stopa" }, color: "#FF9A3C", icon: "🔥" },
+    trail_hearts: { slot: "trail", price: 400, name: { en: "Hearts trail", cs: "Srdíčková stopa" }, color: "#FF7AD9", icon: "💗" },
+    trail_stars:  { slot: "trail", price: 700, name: { en: "Star trail", cs: "Hvězdná stopa" }, color: "#FFCF5A", icon: "⭐" },
+    badge_star:   { slot: "badge", price: 200, name: { en: "Star", cs: "Hvězda" }, icon: "★" },
+    badge_bolt:   { slot: "badge", price: 250, name: { en: "Bolt", cs: "Blesk" }, icon: "⚡" },
+    badge_skull:  { slot: "badge", price: 350, name: { en: "Skull", cs: "Lebka" }, icon: "💀" },
+    badge_fire:   { slot: "badge", price: 350, name: { en: "Fire", cs: "Oheň" }, icon: "🔥" },
+    badge_gamer:  { slot: "badge", price: 500, name: { en: "Gamer", cs: "Hráč" }, icon: "🎮" },
+    badge_crown:  { slot: "badge", price: 800, name: { en: "Crown", cs: "Koruna" }, icon: "👑" },
+    badge_diamond:{ slot: "badge", price: 1500, name: { en: "Diamond", cs: "Diamant" }, icon: "💎" },
+    badge_pass:   { slot: "badge", price: 0, pass: true, name: { en: "Pass badge", cs: "Odznak Pass" }, icon: "🎟" },
+    title_rookie: { slot: "title", price: 50, name: { en: "Rookie", cs: "Nováček" }, text: { en: "Rookie", cs: "Nováček" } },
+    title_sweat:  { slot: "title", price: 300, name: { en: "Tryhard", cs: "Tryhard" }, text: { en: "Tryhard", cs: "Tryhard" } },
+    title_night:  { slot: "title", price: 300, name: { en: "Night owl", cs: "Noční sova" }, text: { en: "Night owl", cs: "Noční sova" } },
+    title_legend: { slot: "title", price: 2000, name: { en: "Legend", cs: "Legenda" }, text: { en: "Legend", cs: "Legenda" } },
+    theme_ocean:  { slot: "theme", price: 400, name: { en: "Ocean theme", cs: "Téma Oceán" }, color: "#0F2A44", vars: { "--bg": "#0F2A44", "--bg2": "#173B5E", "--bg-2": "#173B5E" } },
+    theme_forest: { slot: "theme", price: 400, name: { en: "Forest theme", cs: "Téma Les" }, color: "#122A1C", vars: { "--bg": "#122A1C", "--bg2": "#1E4030", "--bg-2": "#1E4030" } },
+    theme_sunset: { slot: "theme", price: 600, name: { en: "Sunset theme", cs: "Téma Západ" }, color: "#3A1430", vars: { "--bg": "#3A1430", "--bg2": "#55204A", "--bg-2": "#55204A" } },
+    theme_mono:   { slot: "theme", price: 600, name: { en: "Midnight theme", cs: "Téma Půlnoc" }, color: "#0B0B12", vars: { "--bg": "#0B0B12", "--bg2": "#17171F", "--bg-2": "#17171F" } },
   };
+  function applyTheme() { const t = skin("theme"); const r = document.documentElement; for (const k of ["--bg", "--bg2", "--bg-2"]) r.style.removeProperty(k); if (t && t.vars) for (const k in t.vars) r.style.setProperty(k, t.vars[k]); }
+  document.addEventListener("arcade-meta", applyTheme);
   let state = null; try { state = JSON.parse(localStorage.getItem("arcade_meta") || "null"); } catch {}
   function save(st) { state = st; try { localStorage.setItem("arcade_meta", JSON.stringify(st)); } catch {} document.dispatchEvent(new CustomEvent("arcade-meta", { detail: st })); }
   const skin = (slot) => { const id = state && state.equipped && state.equipped[slot]; return id && SHOP[id] ? Object.assign({ id }, SHOP[id]) : null; };
@@ -60,7 +84,7 @@ window.Meta = (() => {
   function nudge() { try { const k = "arcade_nudge_" + new Date().toISOString().slice(0, 10); if (localStorage.getItem(k)) return; localStorage.setItem(k, "1"); const el = document.createElement("div"); el.innerHTML = `<span>${T.login}</span> <a href="${location.pathname.includes("/guest/") ? "../../" : "../"}" style="color:#FFCF5A;font-weight:900;margin-left:8px">${T.signin} →</a>`; el.style.cssText = "position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:99999;background:#24124A;color:#fff;font:800 13px Nunito,system-ui,sans-serif;padding:10px 16px;border-radius:999px;box-shadow:0 6px 18px rgba(0,0,0,.45);max-width:92vw;text-align:center"; document.body.appendChild(el); setTimeout(() => el.remove(), 8000); } catch {} }
 
   async function refresh() { const r = await rpc("my_state"); if (r) save(r); return r; }
-  if (session()) refresh();
+  if (session()) refresh(); setTimeout(applyTheme, 0);
   return { event, finish, win, score, heartbeat, stopHeartbeat, refresh, rpc, skin, SHOP, levelOf, xpForLevel, tier, TIERS, get state() { return state; }, get loggedIn() { return !!session(); } };
 })();
 // zpětná kompatibilita: staré volání Rating.add(game, body) -> skóre event
