@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" /><meta name="theme-color" content="#1B1030" />
+  <meta name="description" content="1v1 turn-based duels: Connect Four, Five in a Row and Battleships. Play a friend over one code, or a bot." />
+  <link rel="icon" href="icon-192.png" /><link rel="apple-touch-icon" href="icon-192.png" /><title>Duel</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" /><link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div id="stage">
+    <a id="btn-hub" class="hub-link" href="../">‹ Arcade</a>
+
+    <section id="menu" class="menu-card" style="margin-top:44px">
+      <div class="brand" style="text-align:center">Duel</div>
+      <div class="lbl" data-i18n="pickGame">Game</div>
+      <div class="games" id="games">
+        <button data-g="c4"><span class="ic">🔴</span><span data-i18n="g_c4">Connect 4</span></button>
+        <button data-g="gm"><span class="ic">⚫</span><span data-i18n="g_gm">Five in a row</span></button>
+        <button data-g="bs"><span class="ic">🚢</span><span data-i18n="g_bs">Battleships</span></button>
+      </div>
+      <input id="name" class="txt" maxlength="12" data-i18n-ph="yourName" placeholder="Your name" />
+      <div class="lbl" data-i18n="vsFriend">With a friend</div>
+      <button id="btn-create" class="big" data-i18n="create">Create room</button>
+      <div class="join"><input id="code" class="txt" maxlength="4" placeholder="CODE" /><button id="btn-join" data-i18n="join">Join</button></div>
+      <div class="lbl" data-i18n="vsBot">Against the bot</div>
+      <div class="seg" id="bot-seg"><button data-d="easy" data-i18n="easy">Easy</button><button data-d="mid" data-i18n="mid">Medium</button><button data-d="hard" data-i18n="hard">Hard</button></div>
+      <div class="dim" id="record" style="text-align:center"></div>
+    </section>
+
+    <section id="lobby" class="menu-card hidden" style="margin-top:44px;align-items:center;text-align:center">
+      <div class="lbl" data-i18n="roomCode">Room code</div>
+      <div class="code" id="lobby-code">ABCD</div>
+      <div class="row"><button id="btn-copy" data-i18n="copyLink">Copy link</button><button id="btn-share" data-i18n="share">Share</button></div>
+      <div class="dim" id="lobby-status"></div>
+      <div class="dim" id="lobby-kind"></div>
+      <button id="btn-start" class="big hidden" data-i18n="start">Start</button>
+      <button id="btn-leave" class="ghost" data-i18n="leave">Leave</button>
+    </section>
+
+    <section id="game" class="hidden" style="width:100%;display:flex;flex-direction:column;align-items:center;gap:10px">
+      <div class="panel-top"><div class="brand sm" id="g-title">Duel</div><button id="btn-quit" class="ghost" data-i18n="leave">Leave</button></div>
+      <div class="score"><div class="p" id="p0"><span class="dot"></span><span class="nm"></span><b></b></div><span class="dim">vs</span><div class="p" id="p1"><span class="dot"></span><span class="nm"></span><b></b></div></div>
+      <div class="status" id="status"></div>
+      <div id="board"></div>
+      <div class="row" id="actions"></div>
+    </section>
+
+    <div id="toast" class="hidden" style="position:fixed;left:50%;top:14%;transform:translateX(-50%);background:#fff;color:#1B1030;font-weight:900;padding:10px 18px;border-radius:999px;z-index:9"></div>
+    <div class="foot"><button id="btn-sound" class="ghost"></button><button id="btn-lang" class="ghost"></button></div>
+  </div>
+  <script src="js/config.js"></script><script src="js/common.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="js/net.js"></script><script src="../rating.js"></script><script src="js/bots.js"></script><script src="js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" /><meta name="theme-color" content="#1B1030" />
+  <meta name="description" content="Build an arcade empire. Buy machines, hire managers, earn even while you're away. Idle tycoon." />
+  <link rel="icon" href="icon-192.png" /><link rel="apple-touch-icon" href="icon-192.png" /><title>Tycoon</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" /><link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div id="stage">
+    <a id="btn-hub" class="hub-link" href="../">‹ Arcade</a>
+    <div class="hdr">
+      <div class="cash" id="cash">$0</div>
+      <div class="rate" id="rate"></div>
+      <div class="stars-line" id="stars-line"></div>
+      <div class="modes" id="modes"><button data-m="1" class="active">×1</button><button data-m="10">×10</button><button data-m="100">×100</button><button data-m="max">MAX</button></div>
+    </div>
+    <div class="list" id="list"></div>
+    <div class="tabs"><button id="t-mgr">👔 <span data-i18n="managers">Managers</span><span class="badge hidden" id="b-mgr"></span></button><button id="t-upg">⚡ <span data-i18n="upgrades">Upgrades</span><span class="badge hidden" id="b-upg"></span></button><button id="t-pre">⭐ <span data-i18n="investors">Investors</span></button></div>
+    <div id="sheet" class="sheet hidden"><button class="x ghost" id="sheet-x">✕</button><h2 id="sheet-t"></h2><div id="sheet-body" style="display:flex;flex-direction:column;gap:8px"></div></div>
+    <div id="welcome" class="overlay hidden"><div class="card welcome"><h2 data-i18n="welcomeBack">Welcome back!</h2><div class="dim" id="away-t"></div><div class="big-num" id="away-cash"></div><button id="btn-collect2" class="big" data-i18n="collect2">Collect ×2 (ad)</button><button id="btn-collect" data-i18n="collect">Collect</button></div></div>
+    <div id="lb" class="overlay hidden"><div class="card"><h2 data-i18n="leaderboard">Leaderboard</h2><div class="name-row"><input id="name-input" maxlength="12" placeholder="Your name" data-i18n-ph="yourName" /><button id="btn-name">OK</button></div><div id="lb-status" class="dim"></div><ol id="lb-list"></ol><button id="lb-close" data-i18n="close">Close</button></div></div>
+    <div style="position:absolute;top:8px;right:8px;display:flex;gap:2px;z-index:3"><button id="btn-lb" class="ghost">🏆</button><button id="btn-sound" class="ghost"></button><button id="btn-lang" class="ghost"></button></div>
+  </div>
+  <script src="js/common.js"></script><script src="../rating.js"></script><script src="js/main.js"></script>
+</body>
+</html>

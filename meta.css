@@ -21,3 +21,4 @@
 .row { display: flex; gap: 8px; }
 .tile .b .n { background: var(--coral); color: #fff; }
 .shop-tabs { grid-column: 1 / -1; flex-wrap: wrap; } .shop-tabs button { font-size: 12px; padding: 6px 12px; } .shop-tabs button.active { background: var(--aqua); color: #062522; }
+.recent-h { margin: 14px 0 6px; font-size: 16px; } .tiles.recent { margin-bottom: 8px; }

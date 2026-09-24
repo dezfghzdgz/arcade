@@ -9,7 +9,7 @@
   <link rel="icon" href="icon-192.png" /><link rel="apple-touch-icon" href="icon-192.png" /><link rel="manifest" href="manifest.webmanifest" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="hub.css?v=17" /><link rel="stylesheet" href="meta.css?v=18" />
+  <link rel="stylesheet" href="hub.css?v=17" /><link rel="stylesheet" href="meta.css?v=19" />
 </head>
 <body>
   <header class="top">
@@ -45,6 +45,7 @@
       <button id="btn-rating" class="pass">★ <span data-i18n="rating">Rating</span></button>
     </div>
     <div class="chips" id="cat-chips"></div>
+    <h2 class="section recent-h hidden" id="recent-h" data-i18n="recentH">Continue playing</h2><div id="recent" class="tiles recent hidden"></div>
     <div id="games-all" class="tiles"></div>
     <div id="games" class="grid hidden"></div><div id="games-solo" class="hidden"></div><div id="games-friends" class="hidden"></div>
     <h2 class="section hidden" id="community-h" data-i18n="community">From the community</h2>
@@ -123,8 +124,8 @@
 
   <script src="config.js?v=10"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-  <script src="rating.js?v=18"></script>
-  <script src="hub.js?v=18"></script>
+  <script src="rating.js?v=19"></script>
+  <script src="hub.js?v=19"></script>
   <script>
     if ("serviceWorker" in navigator) { navigator.serviceWorker.register("./sw.js", { updateViaCache: "none" }).then(r => { r.update(); setInterval(() => r.update(), 60000); }).catch(() => {});
       // nová verze webu se aktivovala -> jednou obnovit, ať se ukáže hned

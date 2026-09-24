@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" /><meta name="theme-color" content="#1B1030" />
+  <meta name="description" content="Guess the five-letter word in six tries. A new daily word for everyone, plus unlimited practice. Czech and English." />
+  <link rel="icon" href="icon-192.png" /><link rel="apple-touch-icon" href="icon-192.png" /><title>Slovo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" /><link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div id="stage">
+    <a id="btn-hub" class="hub-link" href="../">‹ Arcade</a>
+    <div style="position:absolute;top:8px;right:8px;display:flex;gap:2px;z-index:3"><button id="btn-stats" class="ghost">📊</button><button id="btn-sound" class="ghost"></button><button id="btn-lang" class="ghost"></button></div>
+    <div class="top"><div class="brand">Slovo</div><div class="mode"><button id="m-daily" data-i18n="daily">Daily</button><button id="m-free" data-i18n="free">Practice</button></div></div>
+    <div class="dim" id="sub"></div>
+    <div class="grid" id="grid"></div>
+    <div class="kb" id="kb"></div>
+    <div id="over" class="overlay hidden"><div class="card">
+      <h2 id="o-t"></h2><div class="dim" data-i18n="wordWas">The word was</div><div class="answer" id="o-word"></div>
+      <div class="streak"><div class="box"><small data-i18n="played">Played</small><b id="s-p">0</b></div><div class="box"><small data-i18n="winPct">Win %</small><b id="s-w">0</b></div><div class="box"><small data-i18n="streakL">Streak</small><b id="s-s">0</b></div><div class="box"><small data-i18n="bestStreak">Best</small><b id="s-b">0</b></div></div>
+      <div class="dist" id="dist"></div>
+      <div class="dim" id="o-next"></div>
+      <div class="row"><button id="btn-share" class="big" data-i18n="share">Share</button></div>
+      <div class="row"><button id="btn-again" data-i18n="practiceMore">Practice word</button><button id="btn-close" class="ghost" data-i18n="close">Close</button></div>
+    </div></div>
+  </div>
+  <script src="js/common.js"></script><script src="../rating.js"></script><script src="js/words.js"></script><script src="js/main.js"></script>
+</body>
+</html>
