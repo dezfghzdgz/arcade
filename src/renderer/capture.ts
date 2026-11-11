@@ -1,0 +1,1434 @@
+import type { KineCaptureBridge } from '../preload/preload';
+import type { CaptureCommand, LiveAudio, LivePreset, LiveScene, PreviewKind, SceneCamera, Settings } from '../shared/types';
+import { LiveCompositor } from './liveCompositor';
+
+/**
+ * Skrytá snímací stránka.
+ *
+ * Vezme obraz obrazovky (a na Windows zvuk hry) přes Chromium a kóduje ho
+ * MediaRecorderem do jednoho WebM proudu, po sekundě posílá kousky do
+ * hlavního procesu (ten je rourou dává ffmpeg). Na povel "restart"
+ * zastaví běžící recorder a hned rozjede nový na tom samém streamu -
+ * obraz se nepřerušuje, jen proud dostane novou hlavičku.
+ *
+ * Zvuk: obraz a zvuk hry jdou do JEDNOHO recorderu tak, jak je Chromium
+ * snímá (žádné míchání po cestě - to dřív zvuk zpožďovalo o desítky ms
+ * proti obrazu). Mikrofon má VLASTNÍ recorder (jen zvuk) a vlastní proud
+ * kousků; smíchá se až při stavbě klipu ve ffmpeg, kde jde nastavit
+ * hlasitost, posun i druhá stopa jen s hlasem. Web Audio tu slouží jen
+ * měřákům (hladiny do nastavení, hlídání ticha), do záznamu nic nedává.
+ *
+ * Kodek: H.264 první, protože ho grafiky kódují hardwarově a výsledek je
+ * mp4, které přehraje všechno. Pak VP9 a VP8.
+ *
+ * Kamera v klipech (nastavení, výchozí vypnuto): obraz obrazovky jde do
+ * zásobníku přes skládání (LiveCompositor) a kamera se kreslí do TÉHOŽ
+ * snímku jako hra - v klipu sedí přesně, nic se nezarovnává dodatečně a
+ * klip se při uložení nemusí znovu kódovat. Vysílání bere obrazovku bez
+ * téhle kamery (má svou scénu).
+ *
+ * Živé vysílání (tlačítko Vysílat): třetí recorder na stejném snímání -
+ * kopie obrazové stopy zmenšená na kvalitu vysílání, zvuk hry a mikrofon
+ * smíchané přes Web Audio (s hlasitostmi z nastavení), vždy H.264 kvůli
+ * RTMP. Klipy mezi tím běží dál; restart zásobníku při klipu vysílání
+ * nepřeruší (má vlastní stopy).
+ *
+ * Jiný zdroj obrazu (0.14.0 - monitor nebo okno aplikace, i scénou za
+ * vysílání): povel "source" otevře nový obraz, zvuk běží dál, zásobník
+ * pokračuje novou generací a vysílání si skládání přepne na nový obraz
+ * (rozměry proudu zůstanou - viz LiveCompositor.setSource).
+ *
+ * Náhled pro okno appky (povel "preview"): dvakrát za sekundu malý JPEG
+ * toho, co se nahrává nebo co vidí diváci - jen když se na něj někdo dívá.
+ */
+declare const window: Window & { kineCapture: KineCaptureBridge };
+const bridge = window.kineCapture;
+
+/** Proud obrazu (+ zvuk hry) pro hlavní recorder (obraz s kamerou, když je kamera v klipech zapnutá). */
+let stream: MediaStream | null = null;
+/** Obraz obrazovky tak, jak ho dává snímání (bez kamery v klipech) - z něj bere vysílání a rozměry. */
+let screenTrack: MediaStreamTrack | null = null;
+/** Kamera v klipech: skládání kamery do obrazu zásobníku; null = vypnutá / prohlížeč to neumí. */
+let clipCompositor: LiveCompositor | null = null;
+/** Poslední hlášený stav kamery v klipech - opakované pokusy (obsazená kamera) se hlásí jen při změně. */
+let clipCameraReported = '';
+/** Proud jen s mikrofonem pro druhý recorder (null = mikrofon není). */
+let micStream: MediaStream | null = null;
+let recorder: MediaRecorder | null = null;
+let micRecorder: MediaRecorder | null = null;
+/** Kamera zvlášť (clipCameraSeparate): vlastní proud kamery a třetí recorder (jen obraz). */
+let camRecorder: MediaRecorder | null = null;
+let camFeed: ClipCameraFeed | null = null;
+let camSendChain: Promise<void> = Promise.resolve();
+let generation = 0;
+let sendChain: Promise<void> = Promise.resolve();
+let micSendChain: Promise<void> = Promise.resolve();
+let mimeType = '';
+let audioContext: AudioContext | null = null;
+/** Měření hladin: analyzátory na stopě hry a mikrofonu. */
+let meters: { system: AnalyserNode | null; mic: AnalyserNode | null; timer: ReturnType<typeof setInterval>; silentSince: number | null } | null = null;
+/** Název výchozího výstupního zařízení Windows ve chvíli startu (loopback na něm visí). */
+let defaultOutputAtStart = '';
+let systemDeviceLabel = '';
+/** Proč se zvuk hry nepodařilo otevřít (krátce, pro nastavení a diagnostiku); prázdné = jde. */
+let systemAudioError = '';
+/** Zvuk hry se bere náhradně ze vstupu "Stereo Mix" a spol. (název), protože loopback výstupu nešel. */
+let systemAudioFallback = '';
+/** Zvuk hry jde přímo z Windows přes pomocníka (WASAPI loopback, jako OBS) - viz startNativeLoopback. */
+let systemAudioNative = false;
+/** Pomocník už jednou fungoval, kde Chromium nešel - příště rovnou on, bez druhého pokusu přes Chromium. */
+let nativeWorkedBefore = false;
+/** Zkouška bez Windows (KINE_TEST_FAKE_LOOPBACK): zvuk hry rovnou přes pomocníka. */
+let testNativeLoopback = false;
+/** Zpoždění mikrofonu podle Chromia (ms) - o tolik se při stavbě klipu mikrofon posune dopředu. */
+let micLatencyMs = 0;
+/** Je v počítači hardwarový kodér H.264? Zjišťuje se jednou (WebCodecs). */
+let hwEncoder: boolean | null = null;
+/** Snímky za sekundu, se kterými se opravdu nahrává (bez hardwarového kodéru 60 -> 30, ať hra neseká). */
+let effectiveFps = 60;
+/** Měřáky rychle (10x za sekundu, někdo se dívá do nastavení), jinak jednou za sekundu. */
+let metersFast = false;
+/** Mikrofon, který se nahrává (název), a jestli se appka vyhnula mikrofonu sluchátek Bluetooth. */
+let micDeviceLabel = '';
+let bluetoothMicAvoided = false;
+/** Všechny stopy ze zdrojů (obrazovka, zvuk hry, mikrofon) - při konci se zastaví. */
+const sourceTracks: MediaStreamTrack[] = [];
+/** Nahrává se monitor, nebo okno aplikace (podle hlavního procesu - vysílání z okna má plátno 16:9). */
+let sourceKind: 'screen' | 'window' = 'screen';
+
+function report(event: Parameters<KineCaptureBridge['event']>[0]) {
+  bridge.event(event);
+}
+
+/**
+ * Formát proudu: H.264 High profile jako první (lepší obraz na stejný datový
+ * tok - hardwarové kodéry ho umí), pak H.264 obecně, pak VP9 a VP8.
+ */
+function chooseMime(codec: Settings['codec'], hardware: boolean | null): string {
+  // High profile jen s hardwarovým kodérem - softwarový (OpenH264) umí jen Baseline.
+  const high = hardware === true ? ['video/webm;codecs=avc1.640028,opus', 'video/webm;codecs=avc1.64001f,opus'] : [];
+  const candidates: Record<string, string[]> = {
+    h264: [...high, 'video/webm;codecs=h264,opus', 'video/webm;codecs=avc1,opus', 'video/webm;codecs=h264'],
+    vp9: ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp9'],
+    vp8: ['video/webm;codecs=vp8,opus', 'video/webm;codecs=vp8'],
+  };
+  const order = codec === 'auto' ? [...candidates.h264, ...candidates.vp9, ...candidates.vp8] : candidates[codec] ?? candidates.h264;
+  for (const m of order) if (MediaRecorder.isTypeSupported(m)) return m;
+  return 'video/webm';
+}
+
+/** Je hardwarový kodér H.264 k dispozici? (WebCodecs se umí zeptat; MediaRecorder ho pak zpravidla použije.) */
+async function detectHwEncoder(width: number, height: number, fps: number): Promise<boolean | null> {
+  try {
+    const VE = (window as unknown as { VideoEncoder?: { isConfigSupported: (c: unknown) => Promise<{ supported?: boolean }> } }).VideoEncoder;
+    if (!VE) return null;
+    const result = await VE.isConfigSupported({
+      codec: 'avc1.640028',
+      width: Math.max(16, width || 1920),
+      height: Math.max(16, height || 1080),
+      framerate: fps || 60,
+      bitrate: 20_000_000,
+      hardwareAcceleration: 'prefer-hardware',
+    });
+    return result.supported === true;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Název výchozího výstupního zařízení Windows ("Sluchátka (Realtek Audio)").
+ * Chromium ho dává jako položku "default" s popiskem "Default - …"; bez
+ * oprávnění k médiím jsou popisky prázdné - pak se vrátí prázdný řetězec.
+ */
+async function defaultOutputLabel(): Promise<string> {
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const def = devices.find((d) => d.kind === 'audiooutput' && d.deviceId === 'default');
+    const label = (def?.label ?? '').replace(/^(Default|Výchozí|Standard)\s*-\s*/i, '').trim();
+    if (label) return label;
+    const named = devices.find((d) => d.kind === 'audiooutput' && d.deviceId !== 'default' && d.deviceId !== 'communications' && d.label);
+    return named?.label ?? '';
+  } catch {
+    return '';
+  }
+}
+
+/** Popisek zařízení podle id (pro zvolený vstup místo loopbacku). */
+async function deviceLabel(id: string): Promise<string> {
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    return devices.find((d) => d.deviceId === id)?.label ?? '';
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Je to zařízení Bluetooth? Chromium dává do názvu "(Bluetooth)", ovladače
+ * sluchátek v režimu hovoru "Hands-Free".
+ */
+function isBluetoothLabel(label: string): boolean {
+  return /\(Bluetooth\)|hands-?free|\bLE Audio\b/i.test(label);
+}
+
+/** Záznamová zařízení, která ve skutečnosti nahrávají zvuk počítače (ne hlas) - jako mikrofon je nebrat. */
+function isLoopbackInput(label: string): boolean {
+  // Windows: Stereo Mix, VB-Cable, Voicemeeter…; Linux: "Monitor of …" (PipeWire / PulseAudio);
+  // macOS: BlackHole, Soundflower, Loopback (virtuální zařízení, které si hráč nainstaluje).
+  return /stereo ?mix|mix st[ée]r[ée]o|what u hear|cable output|voicemeeter out|wave ?out|monitor of|\.monitor\b|blackhole|soundflower|loopback audio/i.test(label);
+}
+
+/**
+ * Linux a macOS nemají loopback výstupu jako Windows: zvuk hry se bere ze
+ * vstupu, který ho nahrává - na Linuxu "Monitor of …" (PipeWire / PulseAudio
+ * ho nabízí sám), na macOS virtuální zařízení (BlackHole a spol.). Bez něj se
+ * nahrává bez zvuku hry a nastavení řekne, co s tím (kind 'systemLoopback').
+ */
+async function loopbackInputTrack(): Promise<MediaStreamTrack | null> {
+  try {
+    const inputs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput' && d.deviceId !== 'default' && d.deviceId !== 'communications' && isLoopbackInput(d.label));
+    for (const input of inputs) {
+      try {
+        const source = await navigator.mediaDevices.getUserMedia({
+          audio: { deviceId: { exact: input.deviceId }, echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+        });
+        const track = source.getAudioTracks()[0] ?? null;
+        if (!track) continue;
+        sourceTracks.push(...source.getTracks());
+        systemAudioFallback = input.label;
+        systemDeviceLabel = input.label;
+        report({ type: 'warning', generation, kind: 'systemAudioFallback', message: input.label });
+        return track;
+      } catch {
+        // další
+      }
+    }
+  } catch {
+    // seznam zařízení nejde - nic
+  }
+  return null;
+}
+
+/**
+ * Který mikrofon otevřít. Mikrofon sluchátek Bluetooth přepne sluchátka do
+ * režimu hovoru: všechen zvuk je pak mono a špatný a zvuk hry se do
+ * nahrávky často nedostane (Windows ho pošle jiným "zařízením"). Když je
+ * takový mikrofon jen výchozí (hráč ho sám nevybral), appka vezme jiný
+ * mikrofon (notebook, webkamera, headset na kabel), a když žádný není,
+ * nahrává bez mikrofonu - a řekne proč. Zvolený mikrofon se bere vždycky.
+ */
+async function pickMicrophone(settings: Settings): Promise<{ deviceId: string | null; label: string; avoided: boolean }> {
+  let inputs: MediaDeviceInfo[] = [];
+  try {
+    inputs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput');
+  } catch {
+    // Bez seznamu zařízení prostě výchozí.
+  }
+  if (settings.microphoneDevice) {
+    const chosen = inputs.find((d) => d.deviceId === settings.microphoneDevice);
+    return { deviceId: settings.microphoneDevice, label: chosen?.label ?? '', avoided: false };
+  }
+  const def = inputs.find((d) => d.deviceId === 'default') ?? inputs[0];
+  const defaultLabel = (def?.label ?? '').replace(/^(Default|Výchozí|Standard)\s*-\s*/i, '').trim();
+  if (!isBluetoothLabel(def?.label ?? '')) return { deviceId: '', label: defaultLabel, avoided: false };
+  const alternative = inputs.find((d) => d.deviceId !== 'default' && d.deviceId !== 'communications' && d.label && !isBluetoothLabel(d.label) && !isLoopbackInput(d.label));
+  if (alternative) return { deviceId: alternative.deviceId, label: alternative.label, avoided: true };
+  return { deviceId: null, label: '', avoided: true };
+}
+
+/** Zpoždění stopy podle Chromia v ms (MediaTrackSettings.latency), když ho zná. */
+function trackLatencyMs(track: MediaStreamTrack | null): number {
+  if (!track) return 0;
+  const latency = (track.getSettings() as MediaTrackSettings & { latency?: number }).latency;
+  return typeof latency === 'number' && Number.isFinite(latency) && latency > 0 && latency < 1 ? Math.round(latency * 1000) : 0;
+}
+
+/** Krátký důvod chyby pro hráče a diagnostiku ("NotReadableError: Could not start audio source"). */
+function errorText(e: unknown): string {
+  if (!e) return '';
+  const err = e as { name?: string; message?: string };
+  const text = `${err.name && err.name !== 'Error' ? `${err.name}: ` : ''}${err.message ?? String(e)}`;
+  return text.replace(/\s+/g, ' ').trim().slice(0, 160);
+}
+
+// ---- zvuk hry přímo z Windows (pomocník, WASAPI loopback) ------------------------------------
+
+/**
+ * Náskok, se kterým se kousky zvuku z pomocníka přehrávají do stopy - vyrovná
+ * nepravidelné doručování (pomocník čte po ~10 ms, IPC). Zvuk je tím v
+ * nahrávce o kousek pozadu proti obrazu; klip ho při stavbě posune zpátky
+ * (systemLatencyMs v 'started' -> editPlan.clipMuxArgs).
+ */
+const NATIVE_LEAD_MS = 60;
+/** Celkové zpoždění proti cestě přes Chromium: náskok + čtení pomocníka (~10 ms). */
+const NATIVE_LATENCY_MS = NATIVE_LEAD_MS + 10;
+
+/** Proč pomocník nejde (krátce, do diagnostiky), když nejde. */
+let nativeLoopbackError = '';
+
+type NativeState = { ctx: AudioContext; dest: MediaStreamAudioDestinationNode; rate: number; next: number; off: (() => void)[] };
+let nativeState: NativeState | null = null;
+/** Číslo pokusu o pomocníka - stop během čekání na odpověď pokus zruší (a pomocník se zastaví). */
+let nativeRun = 0;
+
+/**
+ * Pustí pomocníka (hlavní proces) a z jeho kousků zvuku (float32 stereo)
+ * poskládá stopu přes Web Audio - ta pak jde do nahrávání místo stopy
+ * z Chromia. Web Audio bez výstupu (sinkId 'none'): nic nehraje do
+ * reproduktorů a nezávisí na zvukovce.
+ */
+async function startNativeLoopback(): Promise<MediaStreamTrack | null> {
+  stopNativeLoopback();
+  const run = ++nativeRun;
+  let result: Awaited<ReturnType<KineCaptureBridge['loopbackStart']>>;
+  try {
+    result = await bridge.loopbackStart();
+  } catch (e) {
+    result = { ok: false, error: errorText(e) };
+  }
+  if (run !== nativeRun) {
+    // Mezitím přišel stop (nebo nový start) - pomocník tu už není potřeba.
+    if (result.ok) bridge.loopbackStop();
+    return null;
+  }
+  if (!result.ok) {
+    nativeLoopbackError = result.error;
+    return null;
+  }
+  let ctx: AudioContext;
+  try {
+    ctx = new AudioContext({ latencyHint: 'playback', sinkId: { type: 'none' } } as AudioContextOptions);
+  } catch {
+    ctx = new AudioContext({ latencyHint: 'playback' });
+  }
+  if (ctx.state !== 'running') void ctx.resume().catch(() => undefined);
+  const dest = ctx.createMediaStreamDestination();
+  dest.channelCount = 2;
+  const state: NativeState = { ctx, dest, rate: result.format.sampleRate || 48000, next: 0, off: [] };
+  state.off.push(
+    bridge.onLoopbackFormat((format) => {
+      if (format.sampleRate > 0) state.rate = format.sampleRate;
+    }),
+    bridge.onLoopbackAudio((bytes) => pushNative(state, bytes)),
+    bridge.onLoopbackEnded((why) => {
+      // Pomocník pořád padá - nahrává se dál, jen bez zvuku hry (a v nastavení je proč).
+      if (nativeState !== state) return;
+      systemAudioError = why || 'helper';
+      report({ type: 'warning', generation, kind: 'systemLoopback', message: `${systemAudioError} | ${defaultOutputAtStart}` });
+    })
+  );
+  nativeState = state;
+  systemAudioNative = true;
+  systemDeviceLabel = defaultOutputAtStart;
+  return dest.stream.getAudioTracks()[0] ?? null;
+}
+
+/** Kousek zvuku z pomocníka do stopy: se stálým náskokem; rozdíl hodin zvukovky a Web Audio vyrovná nepatrná změna rychlosti. */
+function pushNative(state: NativeState, bytes: Uint8Array) {
+  if (nativeState !== state || state.ctx.state === 'closed') return;
+  const aligned = bytes.byteOffset % 4 === 0 ? bytes : bytes.slice();
+  const samples = new Float32Array(aligned.buffer, aligned.byteOffset, aligned.byteLength >> 2);
+  const frames = samples.length >> 1;
+  if (frames === 0) return;
+  const buffer = state.ctx.createBuffer(2, frames, state.rate);
+  const left = buffer.getChannelData(0);
+  const right = buffer.getChannelData(1);
+  for (let i = 0, j = 0; i < frames; i++, j += 2) {
+    left[i] = samples[j];
+    right[i] = samples[j + 1];
+  }
+  const now = state.ctx.currentTime;
+  const lead = NATIVE_LEAD_MS / 1000;
+  let ahead = state.next - now;
+  if (ahead < lead * 0.3) {
+    // Začátek, nebo po tichu (Windows loopbacku v tichu nic neposílá) / výpadku: znovu od stálého náskoku.
+    state.next = now + lead;
+    ahead = lead;
+  } else if (ahead > lead * 4) {
+    // Nahromadilo se (stránka se na chvíli zasekla) - zahodit, ať zpoždění neroste.
+    return;
+  }
+  // ±0,3 % rychlosti (neslyšitelné) drží náskok kolem cíle, i když hodiny zvukovky jdou jinak.
+  const rate = 1 + Math.max(-0.003, Math.min(0.003, (ahead - lead) * 0.1));
+  const source = state.ctx.createBufferSource();
+  source.buffer = buffer;
+  source.playbackRate.value = rate;
+  source.connect(state.dest);
+  source.start(state.next);
+  state.next += frames / state.rate / rate;
+}
+
+function stopNativeLoopback() {
+  const pending = nativeRun;
+  nativeRun++;
+  const state = nativeState;
+  nativeState = null;
+  // I rozběhnutý start bez odpovědi: hlavní proces pomocníka zastaví (jinak by snímal dál pro nikoho).
+  if (state || pending > 0) bridge.loopbackStop();
+  if (!state) return;
+  for (const off of state.off) off();
+  for (const track of state.dest.stream.getTracks()) track.stop();
+  void state.ctx.close().catch(() => undefined);
+}
+
+/**
+ * Zvuk hry (loopback výchozího výstupu Windows) se nepodařilo otevřít.
+ * Stává se to u výchozího výstupu, který Windows "drží" jinak než běžná
+ * sluchátka: virtuální zařízení (Oculus / Meta Quest, Steam Streaming),
+ * 7.1 prostorový zvuk ovladače headsetu, zařízení ve výhradním režimu
+ * jiné aplikace, nebo jen chvilka po probuzení zařízení. Postup:
+ *   1. za chvíli to zkusit znovu (přechodná chyba),
+ *   2. vzít zvuk ze vstupu, který nahrává zvuk počítače (Stereo Mix,
+ *      VB-Cable, Voicemeeter...), když v počítači je,
+ *   3. jinak nahrávat bez zvuku hry - a v nastavení říct proč a co s tím.
+ */
+async function recoverSystemAudio(firstError: unknown): Promise<MediaStreamTrack | null> {
+  // 1) znovu, po krátké pauze (jen zvuk - obraz z druhého pokusu se hned zahodí).
+  //    Když už jednou pomohl až pomocník, tohle se přeskočí (zařízení je pořád stejné).
+  if (!nativeWorkedBefore && !testNativeLoopback) {
+    await new Promise((r) => setTimeout(r, 1200));
+    try {
+      const again = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+      for (const v of again.getVideoTracks()) v.stop();
+      const track = again.getAudioTracks()[0] ?? null;
+      if (track) {
+        sourceTracks.push(track);
+        report({ type: 'warning', generation, kind: 'systemAudioRetry', message: errorText(firstError) });
+        return track;
+      }
+    } catch (e) {
+      firstError = firstError ?? e;
+    }
+  }
+  // 2) přímo z Windows (WASAPI loopback přes pomocníka, jako OBS): zařízení se otevře v jeho
+  //    vlastním formátu - jde i u virtuálních 7.1 zařízení (Logitech G HUB, Razer, Oculus...).
+  const native = await startNativeLoopback();
+  if (native) {
+    nativeWorkedBefore = true;
+    report({ type: 'warning', generation, kind: 'systemAudioNative', message: `${errorText(firstError) || 'no track'} | ${defaultOutputAtStart}` });
+    return native;
+  }
+  // 3) vstup, který nahrává zvuk počítače
+  const viaInput = await loopbackInputTrack();
+  if (viaInput) return viaInput;
+  // 4) bez zvuku hry
+  systemAudioError = errorText(firstError) || nativeLoopbackError || 'unknown';
+  report({ type: 'warning', generation, kind: 'systemLoopback', message: `${systemAudioError} | ${defaultOutputAtStart}` });
+  return null;
+}
+
+/**
+ * Připraví proudy: `stream` = obraz + zvuk hry (tak, jak ho Chromium dává,
+ * bez úprav), `micStream` = jen mikrofon. Měřáky se navěsí na obě stopy.
+ */
+async function getStreams(settings: Settings): Promise<void> {
+  // Zvuk hry z Windows (loopback výchozího výstupu), nebo ze zvoleného vstupního zařízení (Stereo Mix, VB-Cable…).
+  const viaDevice = settings.systemAudio && !!settings.systemAudioDevice;
+  const wantAudio = settings.systemAudio && (bridge.platform === 'win32' || testNativeLoopback) && !viaDevice;
+  // Hardwarový kodér se zjistí dřív, než se začne snímat: bez něj kóduje procesor
+  // a 60 fps by hru brzdilo - pak se nahrává 30 fps (a v nastavení je to vidět).
+  if (hwEncoder === null) hwEncoder = await detectHwEncoder(Math.round(((settings.maxHeight || 1080) * 16) / 9), settings.maxHeight || 1080, settings.fps);
+  effectiveFps = hwEncoder === false && settings.fps > 30 ? 30 : settings.fps;
+  const video: MediaTrackConstraints = {
+    frameRate: { ideal: effectiveFps, max: effectiveFps },
+  };
+  if (settings.maxHeight > 0) {
+    video.height = { max: settings.maxHeight };
+    video.width = { max: Math.round((settings.maxHeight * 16) / 9) };
+  }
+
+  let display: MediaStream | null = null;
+  let lastError: unknown = null;
+  let legacyAudioError: unknown = null;
+  systemAudioError = '';
+  systemAudioFallback = '';
+  systemAudioNative = false;
+  nativeLoopbackError = '';
+  // 1) moderní cesta: getDisplayMedia (obrazovku vybírá hlavní proces)
+  try {
+    display = await navigator.mediaDevices.getDisplayMedia({ video, audio: wantAudio });
+  } catch (e) {
+    lastError = e;
+  }
+  // 2) starší cesta: getUserMedia s chromeMediaSource (nepotřebuje gesto)
+  if (!display) {
+    const sources = await bridge.sources();
+    const settingsNow = await bridge.getSettings();
+    // Vybraný monitor určí hlavní proces (preferred - src/shared/displayPick.ts), jinak podle display_id.
+    const source = sources.find((s) => s.preferred) ?? sources.find((s) => s.display_id === settingsNow.displayId && settingsNow.displayId) ?? sources[0];
+    if (!source) throw new Error(`žádná obrazovka (${String(lastError)})`);
+    const mandatory: Record<string, unknown> = { chromeMediaSource: 'desktop', chromeMediaSourceId: source.id, maxFrameRate: effectiveFps };
+    if (settings.maxHeight > 0) {
+      mandatory.maxHeight = settings.maxHeight;
+      mandatory.maxWidth = Math.round((settings.maxHeight * 16) / 9);
+    }
+    const legacy = async (audio: boolean) =>
+      navigator.mediaDevices.getUserMedia({
+        audio: audio ? ({ mandatory: { chromeMediaSource: 'desktop' } } as unknown as MediaTrackConstraints) : false,
+        video: { mandatory } as unknown as MediaTrackConstraints,
+      });
+    try {
+      display = await legacy(wantAudio);
+    } catch (e) {
+      if (!wantAudio) throw new Error(`${String(lastError)} / ${String(e)}`);
+      legacyAudioError = e;
+      display = await legacy(false);
+    }
+  }
+  sourceTracks.push(...display.getTracks());
+  // Hra = pohyb: kodér a snímání mají držet plynulost, ne ostrost statického textu.
+  const videoTrack = display.getVideoTracks()[0];
+  if (videoTrack) videoTrack.contentHint = 'motion';
+  screenTrack = videoTrack ?? null;
+
+  // Zvuk hry: z proudu obrazovky (loopback), nebo ze zvoleného zařízení (bez úprav - je to už hotový mix, ne řeč).
+  let systemTrack: MediaStreamTrack | null = display.getAudioTracks()[0] ?? null;
+  systemDeviceLabel = '';
+  if (viaDevice) {
+    try {
+      const source = await navigator.mediaDevices.getUserMedia({
+        audio: { deviceId: { exact: settings.systemAudioDevice }, echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+      });
+      systemTrack = source.getAudioTracks()[0] ?? null;
+      sourceTracks.push(...source.getTracks());
+      systemDeviceLabel = (await deviceLabel(settings.systemAudioDevice)) || settings.systemAudioDevice;
+    } catch (e) {
+      // Zařízení není (odpojené, přejmenované) - klip bude bez zvuku hry, hráč dostane upozornění.
+      report({ type: 'warning', generation, kind: 'systemAudio', message: String(e) });
+      systemTrack = null;
+    }
+  } else if (wantAudio) {
+    // Výchozí výstup se hlídá i když zvuk nejde - přepnutí zařízení ve Windows snímání rozjede znovu.
+    defaultOutputAtStart = await defaultOutputLabel();
+    if (!systemTrack) systemTrack = await recoverSystemAudio(lastError ?? legacyAudioError);
+    if (systemTrack && !systemAudioFallback) systemDeviceLabel = defaultOutputAtStart;
+  } else if (settings.systemAudio && bridge.platform !== 'win32') {
+    // Linux / macOS: zvuk hry jen ze vstupu, který ho nahrává (monitor výstupu / virtuální zařízení).
+    systemTrack = await loopbackInputTrack();
+    if (!systemTrack) {
+      systemAudioError = 'no-loopback-input';
+      report({ type: 'warning', generation, kind: 'systemLoopback', message: 'no-loopback-input' });
+    }
+  }
+
+  // Mikrofon (zvolený nebo výchozí, ne sluchátka Bluetooth) - bez něj se nahrává dál, hráč jen dostane upozornění.
+  let micTrack: MediaStreamTrack | null = null;
+  micDeviceLabel = '';
+  bluetoothMicAvoided = false;
+  if (settings.microphone) {
+    const pick = await pickMicrophone(settings);
+    bluetoothMicAvoided = pick.avoided;
+    if (pick.avoided) report({ type: 'warning', generation, kind: 'bluetoothMic', message: pick.label });
+    if (pick.deviceId !== null) {
+      try {
+        const base: MediaTrackConstraints = { echoCancellation: true, noiseSuppression: true };
+        let mic: MediaStream;
+        try {
+          mic = await navigator.mediaDevices.getUserMedia({ audio: pick.deviceId ? { ...base, deviceId: { exact: pick.deviceId } } : base });
+        } catch (e) {
+          // Zvolený mikrofon není - vezme se výchozí, ať klip nezůstane bez hlasu (ale ne sluchátka Bluetooth).
+          if (!pick.deviceId || pick.avoided) throw e;
+          mic = await navigator.mediaDevices.getUserMedia({ audio: base });
+        }
+        micTrack = mic.getAudioTracks()[0] ?? null;
+        sourceTracks.push(...mic.getTracks());
+        micDeviceLabel = pick.label || micTrack?.label || '';
+      } catch (e) {
+        report({ type: 'warning', generation, kind: 'microphone', message: String(e) });
+      }
+    }
+  }
+  micLatencyMs = trackLatencyMs(micTrack);
+
+  // Kamera v klipech: do zásobníku jde obraz s kamerou (bez ní obrazovka tak, jak je).
+  // "Kamera zvlášť": obraz zůstává bez kamery a kamera se nahrává jako vlastní proud (startRecorders).
+  camFeed?.stop();
+  camFeed = null;
+  if (settings.clipCamera && settings.clipCameraSeparate && screenTrack) {
+    clipCompositor?.stop();
+    clipCompositor = null;
+    clipCameraReported = '';
+    camFeed = new ClipCameraFeed(settings.clipCameraDevice, (state, info) => reportClipCamera(state, info));
+    camFeed.start();
+  }
+  const recordVideo = settings.clipCamera && !settings.clipCameraSeparate && screenTrack ? startClipCamera(settings, screenTrack) ?? screenTrack : screenTrack;
+  stream = new MediaStream([...(recordVideo ? [recordVideo] : []), ...(systemTrack ? [systemTrack] : [])]);
+  micStream = micTrack ? new MediaStream([micTrack]) : null;
+
+  startMeters(systemTrack, micTrack);
+}
+
+// ---- kamera v klipech -----------------------------------------------------------------------
+
+function clipCameraOf(settings: Settings): SceneCamera {
+  return {
+    deviceId: settings.clipCameraDevice,
+    position: settings.clipCameraPosition,
+    size: settings.clipCameraSize,
+    shape: settings.clipCameraShape,
+    mirror: settings.clipCameraMirror,
+    width: settings.clipCameraScale,
+    x: settings.clipCameraX,
+    y: settings.clipCameraY,
+  };
+}
+
+function clipScene(camera: SceneCamera | null): LiveScene {
+  return { camera, brb: false, brbText: '', micMuted: false };
+}
+
+/** Stav kamery v klipech do hlavního procesu (nastavení ho ukazuje) - opakovaný stejný stav jen jednou. */
+function reportClipCamera(state: 'starting' | 'on' | 'error', info: { message?: string; width?: number; height?: number } = {}) {
+  const key = `${state}:${info.message ?? ''}:${info.width ?? ''}x${info.height ?? ''}`;
+  if (key === clipCameraReported) return;
+  // "Otevírá se" mezi dvěma stejnými chybami (pokus každých 15 s) nic nového neříká.
+  if (state === 'starting' && clipCameraReported.startsWith('error:')) return;
+  clipCameraReported = key;
+  report({ type: 'clip-camera', generation, state, ...info });
+}
+
+/**
+ * Obraz pro zásobník s kamerou: obrazovka + kamera skládané do jednoho snímku.
+ * Kamera nejde (obsazená, odpojená) = nahrává se dál bez ní a za 15 s se zkusí
+ * znovu (třeba ji pustil Discord). Prohlížeč skládání neumí = null (bez kamery).
+ */
+function startClipCamera(settings: Settings, source: MediaStreamTrack): MediaStreamTrack | null {
+  clipCompositor?.stop();
+  clipCompositor = null;
+  clipCameraReported = '';
+  if (!LiveCompositor.supported()) {
+    reportClipCamera('error', { message: 'camera-unsupported' });
+    return null;
+  }
+  try {
+    clipCompositor = new LiveCompositor(source, clipScene(clipCameraOf(settings)), {
+      brand: settings.brandColor || '#00c9a7',
+      // Chyby kamery jdou přes onCamera (stav + upozornění v hlavním procesu).
+      onWarning: () => undefined,
+      onCamera: (state, info) => reportClipCamera(state, info),
+      retryMs: 15000,
+    });
+    return clipCompositor.track;
+  } catch (e) {
+    clipCompositor = null;
+    reportClipCamera('error', { message: `camera-unsupported: ${String(e)}` });
+    return null;
+  }
+}
+
+/**
+ * Kamera zvlášť: jen otevřít kameru (a hlídat ji - když ji drží jiný program,
+ * zkusit za 15 s znovu), nic se nekreslí. Její stopa jde do třetího recorderu.
+ */
+class ClipCameraFeed {
+  private stream: MediaStream | null = null;
+  private running = false;
+  private request = 0;
+  private retry: ReturnType<typeof setTimeout> | null = null;
+
+  constructor(
+    private deviceId: string,
+    private onState: (state: 'starting' | 'on' | 'error', info: { message?: string; width?: number; height?: number }) => void
+  ) {}
+
+  start(): void {
+    this.running = true;
+    void this.open(++this.request);
+  }
+
+  track(): MediaStreamTrack | null {
+    return this.stream?.getVideoTracks()[0] ?? null;
+  }
+
+  /** Až kamera naběhne (nebo to vzdá) - recorder kamery se pouští, až je co nahrávat. */
+  onTrack: ((track: MediaStreamTrack) => void) | null = null;
+
+  private async open(request: number): Promise<void> {
+    this.onState('starting', {});
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: { ...(this.deviceId ? { deviceId: { exact: this.deviceId } } : {}), width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30, max: 30 } },
+      });
+    } catch (e) {
+      if (this.request === request && this.running) {
+        this.onState('error', { message: cameraErrorMessage(e) });
+        this.retry = setTimeout(() => void this.open(++this.request), 15000);
+      }
+      return;
+    }
+    if (!this.running || this.request !== request) {
+      for (const t of stream.getTracks()) t.stop();
+      return;
+    }
+    for (const t of this.stream?.getTracks() ?? []) t.stop();
+    this.stream = stream;
+    const track = stream.getVideoTracks()[0];
+    const st = track?.getSettings();
+    this.onState('on', { width: st?.width, height: st?.height });
+    // Kamera se odpojila za běhu: zkusit znovu (klip se mezitím nahrává bez ní).
+    track.onended = () => {
+      if (!this.running || this.request !== request) return;
+      this.onState('error', { message: 'camera-ended' });
+      this.retry = setTimeout(() => void this.open(++this.request), 15000);
+    };
+    this.onTrack?.(track);
+  }
+
+  stop(): void {
+    this.running = false;
+    this.request += 1;
+    if (this.retry) clearTimeout(this.retry);
+    this.retry = null;
+    for (const t of this.stream?.getTracks() ?? []) t.stop();
+    this.stream = null;
+  }
+}
+
+/** Text chyby kamery (stejné klíče jako kompozitor: obsazená, není, zakázaná…). */
+function cameraErrorMessage(e: unknown): string {
+  const name = (e as { name?: string })?.name ?? '';
+  if (name === 'NotReadableError' || name === 'AbortError') return 'camera-busy';
+  if (name === 'NotFoundError' || name === 'OverconstrainedError') return 'camera-missing';
+  if (name === 'NotAllowedError' || name === 'SecurityError') return 'camera-denied';
+  return `camera-error: ${String((e as Error)?.message ?? e)}`;
+}
+
+// ---- měřáky a hlídání ticha ----------------------------------------------------------------
+
+/** RMS hladina 0-1 z analyzátoru (0 = digitální ticho). */
+function level(node: AnalyserNode, buffer: Float32Array): number {
+  node.getFloatTimeDomainData(buffer as Float32Array<ArrayBuffer>);
+  let sum = 0;
+  for (let i = 0; i < buffer.length; i++) sum += buffer[i] * buffer[i];
+  return Math.sqrt(sum / buffer.length);
+}
+
+/**
+ * Analyzátory jen na měření - do záznamu z Web Audia nic nejde. Když se
+ * nikdo nedívá na měřáky (skoro pořád), čte se 4x za sekundu delší úsek
+ * (stačí na hlídání ticha) a zvukové vlákno běží s většími buffery
+ * ('playback') - méně probouzení procesoru během hry.
+ */
+function startMeters(systemTrack: MediaStreamTrack | null, micTrack: MediaStreamTrack | null) {
+  stopMeters();
+  if (!systemTrack && !micTrack) return;
+  let system: AnalyserNode | null = null;
+  let mic: AnalyserNode | null = null;
+  try {
+    audioContext = new AudioContext({ latencyHint: 'playback' });
+    if (audioContext.state !== 'running') void audioContext.resume().catch(() => undefined);
+    const analyser = (track: MediaStreamTrack): AnalyserNode => {
+      const node = audioContext!.createAnalyser();
+      node.fftSize = 8192;
+      audioContext!.createMediaStreamSource(new MediaStream([track])).connect(node);
+      return node;
+    };
+    system = systemTrack ? analyser(systemTrack) : null;
+    mic = micTrack ? analyser(micTrack) : null;
+  } catch {
+    // Bez měřáků se nahrává dál.
+    return;
+  }
+  const buffer = new Float32Array(8192);
+  let peakSystem = 0;
+  let peakMic = 0;
+  let ticks = 0;
+  let fastBefore = metersFast;
+  const tickMs = () => (metersFast ? 100 : 250);
+  const tick = () => {
+    if (!meters) return;
+    // Rychle (někdo se dívá do nastavení): každé čtení hned ven - plynulé proužky.
+    // Jinak jednou za sekundu maximum ze 4 čtení - na hlídání ticha to stačí.
+    if (system) peakSystem = Math.max(peakSystem, level(system, buffer));
+    if (mic) peakMic = Math.max(peakMic, level(mic, buffer));
+    ticks += 1;
+    if (metersFast !== fastBefore) {
+      // Přepnutí rychlosti: nový rytmus čtení.
+      fastBefore = metersFast;
+      clearInterval(meters.timer);
+      meters.timer = setInterval(tick, tickMs());
+    }
+    if (!metersFast && ticks < 4) return;
+    ticks = 0;
+    const now = Date.now();
+    if (system) {
+      if (peakSystem < 1e-5) meters.silentSince ??= now;
+      else meters.silentSince = null;
+    }
+    report({
+      type: 'levels',
+      generation,
+      levels: {
+        system: system ? Math.min(1, peakSystem) : null,
+        mic: mic ? Math.min(1, peakMic) : null,
+        systemDevice: systemDeviceLabel,
+        systemSilentSeconds: system && meters.silentSince ? Math.round((now - meters.silentSince) / 1000) : 0,
+        micDevice: micDeviceLabel,
+        bluetoothMicAvoided,
+        systemError: systemAudioError || undefined,
+        systemFallback: systemAudioFallback || undefined,
+        systemNative: systemAudioNative || undefined,
+        defaultOutput: defaultOutputAtStart || undefined,
+      },
+    });
+    peakSystem = 0;
+    peakMic = 0;
+  };
+  meters = { system, mic, timer: setInterval(tick, tickMs()), silentSince: null };
+}
+
+function stopMeters() {
+  if (meters) clearInterval(meters.timer);
+  meters = null;
+  void audioContext?.close().catch(() => undefined);
+  audioContext = null;
+}
+
+// Výchozí výstup Windows se změnil (sluchátka, jiný monitor): loopback zůstal
+// na starém zařízení a nahrával by ticho - hlavní proces snímání rozjede znovu.
+navigator.mediaDevices.addEventListener('devicechange', () => {
+  if (!stream || !defaultOutputAtStart || !currentSettings?.systemAudio || currentSettings.systemAudioDevice) return;
+  void defaultOutputLabel().then((label) => {
+    if (label && label !== defaultOutputAtStart) {
+      report({ type: 'defaultOutputChanged', generation, device: label });
+    }
+  });
+});
+
+// ---- recordery -------------------------------------------------------------------------------
+
+function startRecorders(settings: Settings, gen: number) {
+  if (!stream) throw new Error('není stream');
+  mimeType = chooseMime(settings.codec, hwEncoder);
+  const options: MediaRecorderOptions & { videoKeyFrameIntervalDuration?: number } = {
+    mimeType,
+    videoBitsPerSecond: Math.round(settings.videoMbps * 1_000_000),
+    audioBitsPerSecond: 160_000,
+    // Klíčový snímek každé 2 s = segmenty po 2 s = klip nejvýš o 2 s delší.
+    videoKeyFrameIntervalDuration: 2000,
+  };
+  const rec = new MediaRecorder(stream, options);
+  const myGen = gen;
+  rec.ondataavailable = (e) => {
+    if (!e.data || e.data.size === 0) return;
+    const blob = e.data;
+    sendChain = sendChain.then(async () => {
+      const buffer = await blob.arrayBuffer();
+      bridge.chunk(myGen, buffer);
+    });
+  };
+  rec.onerror = (e) => {
+    report({ type: 'error', generation: myGen, message: String((e as ErrorEvent).error ?? e) });
+  };
+
+  // Mikrofon zvlášť: jen zvuk (Opus), stejná generace, vlastní proud kousků.
+  let mic: MediaRecorder | null = null;
+  if (micStream && micStream.getAudioTracks().length > 0) {
+    const micMime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm';
+    mic = new MediaRecorder(micStream, { mimeType: micMime, audioBitsPerSecond: 128_000 });
+    mic.ondataavailable = (e) => {
+      if (!e.data || e.data.size === 0) return;
+      const blob = e.data;
+      micSendChain = micSendChain.then(async () => {
+        const buffer = await blob.arrayBuffer();
+        bridge.chunk(myGen, buffer, 'mic');
+      });
+    };
+    mic.onerror = (e) => {
+      // Mikrofon padl - obraz a zvuk hry jedou dál, klip bude bez hlasu.
+      report({ type: 'warning', generation: myGen, kind: 'microphone', message: String((e as ErrorEvent).error ?? e) });
+    };
+  }
+
+  // Kamera zvlášť: třetí recorder, jen obraz (VP8/VP9 WebM), nižší datový tok - kamera je malá.
+  // Když kamera ještě nenaběhla (otevírá se, je obsazená), recorder se spustí, až přijde stopa;
+  // kousky mají časy, takže se v klipu srovnají s obrazem jako mikrofon.
+  let cam: MediaRecorder | null = null;
+  let camStopped: Promise<void> = Promise.resolve();
+  const startCam = (track: MediaStreamTrack) => {
+    // Jen pro běžící generaci (kamera, která naběhla až po dalším startu, patří tomu novému).
+    if (generation !== myGen || recorder !== rec) return;
+    if (camRecorder && camRecorder.state !== 'inactive') return;
+    const camMime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' : MediaRecorder.isTypeSupported('video/webm;codecs=vp8') ? 'video/webm;codecs=vp8' : 'video/webm';
+    const r = new MediaRecorder(new MediaStream([track]), { mimeType: camMime, videoBitsPerSecond: 2_500_000, videoKeyFrameIntervalDuration: 2000 } as MediaRecorderOptions);
+    r.ondataavailable = (e) => {
+      if (!e.data || e.data.size === 0) return;
+      const blob = e.data;
+      camSendChain = camSendChain.then(async () => {
+        const buffer = await blob.arrayBuffer();
+        bridge.chunk(myGen, buffer, 'cam');
+      });
+    };
+    r.onerror = (e) => report({ type: 'warning', generation: myGen, kind: 'camera', message: String((e as ErrorEvent).error ?? e) });
+    camStopped = new Promise<void>((resolve) => (r.onstop = () => resolve()));
+    r.start(1000);
+    cam = r;
+    camRecorder = r;
+    // Od kdy kamera jede (může být později než obraz) - podle toho se její kousky srovnají s obrazem.
+    report({ type: 'camera-started', generation: myGen, at: Date.now() });
+  };
+  // "stopped" až když dorazily poslední kousky VŠECH proudů - jinak by hlavní proces zavřel roury dřív.
+  const stoppedMain = new Promise<void>((resolve) => (rec.onstop = () => resolve()));
+  const stoppedMic = mic ? new Promise<void>((resolve) => (mic!.onstop = () => resolve())) : Promise.resolve();
+  void Promise.all([stoppedMain, stoppedMic])
+    .then(() => (cam ? camStopped : Promise.resolve()))
+    .then(() => Promise.all([sendChain, micSendChain, camSendChain]))
+    .then(() => report({ type: 'stopped', generation: myGen, at: Date.now() }));
+
+  // Oba naráz, ať mají společný začátek (rozdíl se při stavbě klipu dorovná z časů kousků).
+  rec.start(1000);
+  mic?.start(1000);
+  recorder = rec;
+  micRecorder = mic;
+  generation = myGen;
+  // Kamera zvlášť až teď (startCam kontroluje, že jde o běžící generaci): stopa už je, nebo přijde (onTrack).
+  if (camFeed) {
+    const track = camFeed.track();
+    if (track) startCam(track);
+    camFeed.onTrack = (t) => startCam(t);
+  }
+  const size = videoSize();
+  report({
+    type: 'started',
+    generation: myGen,
+    at: Date.now(),
+    mimeType: rec.mimeType || mimeType,
+    audio: stream.getAudioTracks().length > 0,
+    mic: !!mic,
+    camera: !!camFeed,
+    micLatencyMs,
+    systemLatencyMs: systemAudioNative ? NATIVE_LATENCY_MS : 0,
+    hwEncoder,
+    fps: effectiveFps,
+    ...(size ? { width: size.width, height: size.height } : {}),
+  });
+}
+
+// ---- rozměry obrazu (hra přepnula rozlišení) -------------------------------------------------
+
+/** Rozměry obrazu, které teď ze snímání chodí (podle stopy obrazovky - kamera v klipech je nemění). */
+function videoSize(): { width: number; height: number } | null {
+  const s = screenTrack?.getSettings();
+  return s && s.width && s.height ? { width: s.width, height: s.height } : null;
+}
+
+let sizeTimer: ReturnType<typeof setInterval> | null = null;
+let lastSize = '';
+
+/**
+ * Jednou za sekundu: změnila obrazovka rozměry (hra přešla na celou
+ * obrazovku 4:3, alt-tab na plochu)? Hlavní proces pak klip přes tu chvíli
+ * nelepí naslepo - jinak se rozměry musí měřit u každého klipu (pomalé).
+ * Ptát se stopy na nastavení nic nestojí.
+ */
+function watchSize() {
+  stopWatchSize();
+  lastSize = (() => {
+    const s = videoSize();
+    return s ? `${s.width}x${s.height}` : '';
+  })();
+  sizeTimer = setInterval(() => {
+    const s = videoSize();
+    if (!s) return;
+    const key = `${s.width}x${s.height}`;
+    if (key === lastSize) return;
+    lastSize = key;
+    report({ type: 'resized', generation, at: Date.now(), width: s.width, height: s.height });
+  }, 1000);
+}
+
+function stopWatchSize() {
+  if (sizeTimer) clearInterval(sizeTimer);
+  sizeTimer = null;
+}
+
+function stopRecorders() {
+  if (recorder && recorder.state !== 'inactive') recorder.stop();
+  if (micRecorder && micRecorder.state !== 'inactive') micRecorder.stop();
+  if (camRecorder && camRecorder.state !== 'inactive') camRecorder.stop();
+  if (camFeed) camFeed.onTrack = null;
+  recorder = null;
+  micRecorder = null;
+  camRecorder = null;
+}
+
+// ---- živé vysílání ----------------------------------------------------------------------------
+
+type LiveSession = {
+  recorder: MediaRecorder;
+  generation: number;
+  /** Kopie obrazové stopy a smíchaný zvuk - zastaví se s koncem vysílání. */
+  tracks: MediaStreamTrack[];
+  ctx: AudioContext;
+  chain: Promise<void>;
+  /** Kamera a "Hned jsem zpět" (null = prohlížeč to neumí - vysílá se čistá obrazovka). */
+  compositor: LiveCompositor | null;
+  /** Kopie obrazovky (bez skládání ji "Hned jsem zpět" aspoň zatemní). */
+  video: MediaStreamTrack;
+  /** Hlasitost mikrofonu ve vysílání (ztlumení = 0). */
+  micGain: GainNode | null;
+  micLevel: number;
+  scene: LiveScene;
+  preset: LivePreset;
+};
+let live: LiveSession | null = null;
+
+const EMPTY_SCENE: LiveScene = { camera: null, brb: false, brbText: '', micMuted: false };
+
+/** Změna scény za běhu: kamera, "Hned jsem zpět", ztlumený mikrofon - bez nového recorderu. */
+function applyLiveScene(session: LiveSession, scene: LiveScene) {
+  session.scene = scene;
+  if (session.compositor) session.compositor.setScene(scene);
+  else {
+    // Bez skládání: "Hned jsem zpět" / scéna s textem / jen kamera = černý obraz (hra není vidět); kamera nejde.
+    session.video.enabled = !scene.brb && typeof scene.screenText !== 'string' && !scene.cameraFull;
+    if (scene.camera) report({ type: 'live-warning', generation: session.generation, kind: 'camera', message: 'camera-unsupported' });
+  }
+  if (session.micGain) {
+    const target = scene.micMuted ? 0 : session.micLevel;
+    session.micGain.gain.setTargetAtTime(target, session.ctx.currentTime, 0.03);
+  }
+}
+
+/** Formát pro vysílání: vždy H.264 (RTMP / FLV nic jiného nebere), s grafikou High profile. */
+function liveMime(): string | null {
+  const high = hwEncoder === true ? ['video/webm;codecs=avc1.640028,opus', 'video/webm;codecs=avc1.64001f,opus'] : [];
+  for (const m of [...high, 'video/webm;codecs=h264,opus', 'video/webm;codecs=avc1,opus']) if (MediaRecorder.isTypeSupported(m)) return m;
+  return null;
+}
+
+async function startLive(gen: number, preset: LivePreset, wanted: LiveAudio = { game: true, mic: true }, scene: LiveScene = EMPTY_SCENE): Promise<void> {
+  stopLive();
+  if (!stream) throw new Error('capture-off: snímání neběží');
+  // Obrazovka bez kamery v klipech - vysílání má vlastní scénu (kamera tam, kde ji chce vysílání).
+  const source = screenTrack ?? stream.getVideoTracks()[0];
+  if (!source) throw new Error('capture-off: není obraz');
+  const mime = liveMime();
+  if (!mime) throw new Error('h264-unsupported');
+  // Vlastní kopie obrazu: zmenší se na kvalitu vysílání, zásobník s klipy zůstává ve své.
+  const video = source.clone();
+  video.contentHint = 'motion';
+  try {
+    await video.applyConstraints({ width: { max: preset.width }, height: { max: preset.height }, frameRate: { max: preset.fps } });
+  } catch {
+    // Zmenšit nejde - vysílá se v rozlišení snímání (recorder datový tok stejně drží).
+  }
+  // Kamera a "Hned jsem zpět": skládání snímků (bez kamery se snímky jen přeposílají - nic to nestojí).
+  let compositor: LiveCompositor | null = null;
+  if (LiveCompositor.supported()) {
+    try {
+      compositor = new LiveCompositor(video, scene, {
+        brand: currentSettings?.brandColor || '#00c9a7',
+        onWarning: (message) => report({ type: 'live-warning', generation: gen, kind: 'camera', message }),
+        // Rozměry proudu napořád - scéna s jiným monitorem / aplikací se do nich vejde.
+        // Vysílání, které začíná na okně aplikace, má plátno 16:9 podle kvality (okno bývá malé a jinak široké).
+        lockSize: sourceKind === 'window' ? { width: preset.width, height: preset.height } : true,
+      });
+    } catch (e) {
+      compositor = null;
+      if (scene.camera) report({ type: 'live-warning', generation: gen, kind: 'camera', message: `camera-unsupported: ${String(e)}` });
+    }
+  }
+  const outVideo = compositor ? compositor.track : video;
+  // Zvuk: hra + mikrofon do jedné stopy (RTMP má jen jednu), hlasitosti jako u klipů.
+  const ctx = new AudioContext({ sampleRate: 48000 });
+  if (ctx.state !== 'running') void ctx.resume().catch(() => undefined);
+  const dest = ctx.createMediaStreamDestination();
+  // Hlasitá hra + hlas by se v součtu přebudily - omezovač těsně pod nulou (jako alimiter u klipů).
+  const limiter = ctx.createDynamicsCompressor();
+  limiter.threshold.value = -1.5;
+  limiter.knee.value = 0;
+  limiter.ratio.value = 20;
+  limiter.attack.value = 0.003;
+  limiter.release.value = 0.1;
+  limiter.connect(dest);
+  const mix = (track: MediaStreamTrack, gain: number) => {
+    const node = ctx.createGain();
+    node.gain.value = Number.isFinite(gain) ? Math.max(0, Math.min(2, gain)) : 1;
+    ctx.createMediaStreamSource(new MediaStream([track])).connect(node);
+    node.connect(limiter);
+    return node;
+  };
+  // Hráč si ve vysílání může zvuk hry nebo mikrofon vypnout (klipy se tím nemění).
+  const systemTrack = wanted.game ? stream.getAudioTracks()[0] ?? null : null;
+  const micTrack = wanted.mic ? micStream?.getAudioTracks()[0] ?? null : null;
+  if (systemTrack) mix(systemTrack, currentSettings?.systemGain ?? 1);
+  const micLevel = Math.max(0, Math.min(2, currentSettings?.micGain ?? 1));
+  const micGain = micTrack ? mix(micTrack, micLevel) : null;
+  if (micGain && scene.micMuted) micGain.gain.value = 0;
+  if (!systemTrack && !micTrack) {
+    // Bez zvuku by některé přehrávače proud nebraly - tiché ticho.
+    const silent = ctx.createConstantSource();
+    const zero = ctx.createGain();
+    zero.gain.value = 0;
+    silent.connect(zero);
+    zero.connect(dest);
+    silent.start();
+  }
+  const audio = dest.stream.getAudioTracks()[0];
+  const options: MediaRecorderOptions & { videoKeyFrameIntervalDuration?: number } = {
+    mimeType: mime,
+    videoBitsPerSecond: preset.videoKbps * 1000,
+    audioBitsPerSecond: 160_000,
+    // Cloudflare chce klíčový snímek aspoň každé 2 s.
+    videoKeyFrameIntervalDuration: 2000,
+  };
+  const rec = new MediaRecorder(new MediaStream([outVideo, ...(audio ? [audio] : [])]), options);
+  const session: LiveSession = {
+    recorder: rec,
+    generation: gen,
+    tracks: [video, outVideo, ...(audio ? [audio] : [])],
+    ctx,
+    chain: Promise.resolve(),
+    compositor,
+    video,
+    micGain,
+    micLevel,
+    scene,
+    preset,
+  };
+  rec.ondataavailable = (e) => {
+    if (!e.data || e.data.size === 0) return;
+    const blob = e.data;
+    session.chain = session.chain.then(async () => {
+      bridge.liveChunk(gen, await blob.arrayBuffer());
+    });
+  };
+  rec.onerror = (e) => report({ type: 'live-error', generation: gen, message: String((e as ErrorEvent).error ?? e) });
+  rec.onstop = () => {
+    releaseLive(session);
+    void session.chain.then(() => report({ type: 'live-stopped', generation: gen }));
+  };
+  rec.start(1000);
+  live = session;
+  // Bez skládání se "Hned jsem zpět" a kamera řeší náhradou (viz applyLiveScene).
+  if (!compositor) applyLiveScene(session, scene);
+  const vs = video.getSettings();
+  report({ type: 'live-started', generation: gen, mimeType: rec.mimeType || mime, width: vs.width ?? 0, height: vs.height ?? 0, fps: Math.round(vs.frameRate ?? preset.fps) });
+}
+
+/** Kamera, kopie obrazu, zvuk vysílání - pryč s koncem vysílání. */
+function releaseLive(session: LiveSession) {
+  session.compositor?.stop();
+  for (const track of session.tracks) track.stop();
+  void session.ctx.close().catch(() => undefined);
+}
+
+function stopLive() {
+  const session = live;
+  live = null;
+  if (!session) return;
+  if (session.recorder.state !== 'inactive') session.recorder.stop();
+  else releaseLive(session);
+}
+
+function stopAll() {
+  stopLive();
+  stopPreviewTap();
+  stopRecorders();
+  stopMeters();
+  stopNativeLoopback();
+  stopWatchSize();
+  clipCompositor?.stop();
+  clipCompositor = null;
+  camFeed?.stop();
+  camFeed = null;
+  clipCameraReported = '';
+  for (const track of stream?.getTracks() ?? []) track.stop();
+  for (const track of micStream?.getTracks() ?? []) track.stop();
+  for (const track of sourceTracks) track.stop();
+  sourceTracks.length = 0;
+  stream = null;
+  screenTrack = null;
+  micStream = null;
+  defaultOutputAtStart = '';
+}
+
+// ---- jiný zdroj obrazu za běhu (monitor / okno aplikace) -------------------------------------
+
+/** Obraz zvoleného zdroje (id z desktopCapturer) - stejná omezení jako při startu (snímky, výška). */
+async function openSourceTrack(sourceId: string, settings: Settings): Promise<MediaStreamTrack> {
+  const mandatory: Record<string, unknown> = { chromeMediaSource: 'desktop', chromeMediaSourceId: sourceId, maxFrameRate: effectiveFps };
+  if (settings.maxHeight > 0) {
+    mandatory.maxHeight = settings.maxHeight;
+    mandatory.maxWidth = Math.round((settings.maxHeight * 16) / 9);
+  }
+  const media = await navigator.mediaDevices.getUserMedia({ audio: false, video: { mandatory } as unknown as MediaTrackConstraints });
+  const track = media.getVideoTracks()[0];
+  if (!track) throw new Error('no video');
+  return track;
+}
+
+/**
+ * Obrazovka / okno přestalo posílat obraz. Zavřená aplikace = upozornění
+ * (hlavní proces přepne na monitor a počká, až se aplikace zase otevře);
+ * odpojený monitor = chyba (snímání se rozjede znovu).
+ */
+function watchEnded(track: MediaStreamTrack) {
+  const kind = sourceKind;
+  track.addEventListener('ended', () => {
+    if (screenTrack && track !== screenTrack) return;
+    if (kind === 'window') report({ type: 'warning', generation, kind: 'source', message: 'window-closed' });
+    else report({ type: 'error', generation, message: 'obrazovka přestala posílat obraz' });
+  });
+}
+
+/** Vysílání si vezme nový obraz (zmenšený na kvalitu vysílání) - proud se nepřeruší. */
+async function swapLiveSource(session: LiveSession, next: MediaStreamTrack): Promise<void> {
+  if (!session.compositor) {
+    // Bez skládání nejde stopa vyměnit - vysílá se dál, co bylo.
+    report({ type: 'live-warning', generation: session.generation, kind: 'camera', message: 'source-unsupported' });
+    return;
+  }
+  const clone = next.clone();
+  clone.contentHint = 'motion';
+  try {
+    await clone.applyConstraints({ width: { max: session.preset.width }, height: { max: session.preset.height }, frameRate: { max: session.preset.fps } });
+  } catch {
+    // zmenšení nejde - skládání obraz zmenší samo
+  }
+  if (live !== session) {
+    clone.stop();
+    return;
+  }
+  session.compositor.setSource(clone);
+  const old = session.video;
+  session.video = clone;
+  session.tracks = session.tracks.map((t) => (t === old ? clone : t));
+  old.stop();
+}
+
+/**
+ * Povel "source": nový obraz místo starého. Zvuk (loopback hry, mikrofon)
+ * běží dál; recordery zásobníku se rozjedou znovu na novou generaci (obraz
+ * může mít jiné rozměry - klip z konce zásobníku si vezme jen souvislý
+ * kus se stejnými rozměry). Když nový obraz nejde otevřít, nahrává se dál
+ * starý (hlavní proces dostane upozornění) - generace se rozjede tak jako tak.
+ */
+async function switchSource(sourceId: string, kind: 'screen' | 'window', gen: number): Promise<void> {
+  if (!stream || !currentSettings) throw new Error('snímání neběží');
+  const settings = currentSettings;
+  let next: MediaStreamTrack | null = null;
+  try {
+    next = await openSourceTrack(sourceId, settings);
+  } catch (e) {
+    report({ type: 'warning', generation: gen, kind: 'source', message: `switch-failed: ${errorText(e)}` });
+  }
+  if (!stream) {
+    next?.stop();
+    throw new Error('snímání neběží');
+  }
+  const old = screenTrack;
+  if (next) {
+    next.contentHint = 'motion';
+    screenTrack = next;
+    sourceKind = kind;
+    sourceTracks.push(next);
+    watchEnded(next);
+    clipCompositor?.setSource(next);
+    if (live) await swapLiveSource(live, next);
+  }
+  stopRecorders();
+  const video = clipCompositor ? clipCompositor.track : screenTrack;
+  stream = new MediaStream([...(video ? [video] : []), ...stream.getAudioTracks()]);
+  startRecorders(settings, gen);
+  watchSize();
+  if (next && old && old !== next) {
+    // Jen obraz: zvuk hry ze stejného snímání (loopback) běží dál jako samostatná stopa.
+    old.stop();
+    const i = sourceTracks.indexOf(old);
+    if (i >= 0) sourceTracks.splice(i, 1);
+  }
+  if (previewTap && previewTap.source === old) stopPreviewTap();
+}
+
+// ---- náhled pro okno appky ---------------------------------------------------------------------
+
+/** Šířka náhledu (px) - malý JPEG dvakrát za sekundu nic nestojí. */
+const PREVIEW_WIDTH = 640;
+let previewWant: PreviewKind | null = null;
+let previewTimer: ReturnType<typeof setInterval> | null = null;
+let previewBusy = false;
+let previewCanvas: OffscreenCanvas | null = null;
+/**
+ * Obraz obrazovky pro náhled: kopie stopy čtená naprázdno - každý snímek se hned zavře, jen když
+ * náhled chce další, nakreslí se nejdřív do malého plátna. Snímky se nedrží (viz LiveCompositor.grab).
+ */
+let previewTap: { source: MediaStreamTrack; track: MediaStreamTrack; reader: ReadableStreamDefaultReader<VideoFrame>; grab: ((frame: VideoFrame) => void) | null } | null = null;
+
+type ProcessorCtorLike = new (init: { track: MediaStreamTrack; maxBufferSize?: number }) => { readable: ReadableStream<VideoFrame> };
+
+function startPreviewTap(source: MediaStreamTrack) {
+  if (previewTap?.source === source) return;
+  stopPreviewTap();
+  const Processor = (window as unknown as { MediaStreamTrackProcessor?: ProcessorCtorLike }).MediaStreamTrackProcessor;
+  if (!Processor) return;
+  const track = source.clone();
+  const reader = new Processor({ track, maxBufferSize: 1 }).readable.getReader();
+  const tap = { source, track, reader, grab: null as ((frame: VideoFrame) => void) | null };
+  previewTap = tap;
+  void (async () => {
+    while (previewTap === tap) {
+      let result: ReadableStreamReadResult<VideoFrame>;
+      try {
+        result = await reader.read();
+      } catch {
+        break;
+      }
+      if (result.done) break;
+      const frame = result.value;
+      try {
+        if (previewTap === tap && tap.grab) {
+          const draw = tap.grab;
+          tap.grab = null;
+          draw(frame);
+        }
+      } catch {
+        // další snímek
+      } finally {
+        frame.close();
+      }
+    }
+  })();
+}
+
+function stopPreviewTap() {
+  const tap = previewTap;
+  previewTap = null;
+  if (!tap) return;
+  tap.grab = null;
+  void tap.reader.cancel().catch(() => undefined);
+  tap.track.stop();
+}
+
+function setPreview(want: PreviewKind | null) {
+  previewWant = want;
+  if (!want) {
+    if (previewTimer) clearInterval(previewTimer);
+    previewTimer = null;
+    stopPreviewTap();
+    live?.compositor?.grabNext(null);
+    clipCompositor?.grabNext(null);
+    return;
+  }
+  if (!previewTimer) previewTimer = setInterval(() => void previewTick(), 500);
+  void previewTick();
+}
+
+/** Další snímek ze zdroje do malého plátna (nejdéle 1 s - obraz, který stojí, nové snímky neposílá). */
+function grabInto(set: (draw: ((frame: VideoFrame) => void) | null) => void): Promise<{ width: number; height: number } | null> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      set(null);
+      resolve(null);
+    }, 1000);
+    set((frame) => {
+      clearTimeout(timer);
+      const sw = frame.displayWidth;
+      const sh = frame.displayHeight;
+      if (!sw || !sh) return resolve(null);
+      const width = Math.min(PREVIEW_WIDTH, sw);
+      const height = Math.max(2, Math.round((width * sh) / sw));
+      if (!previewCanvas || previewCanvas.width !== width || previewCanvas.height !== height) previewCanvas = new OffscreenCanvas(width, height);
+      const ctx = previewCanvas.getContext('2d') as OffscreenCanvasRenderingContext2D | null;
+      if (!ctx) return resolve(null);
+      ctx.drawImage(frame, 0, 0, width, height);
+      resolve({ width: sw, height: sh });
+    });
+  });
+}
+
+/** Jeden snímek náhledu: co se chce (vysílání / zásobník / obrazovka), zmenšit, JPEG, do hlavního procesu. */
+async function previewTick(): Promise<void> {
+  if (previewBusy || !previewWant || !stream) return;
+  previewBusy = true;
+  try {
+    let kind: PreviewKind = previewWant;
+    if (kind === 'live' && !live?.compositor) kind = 'screen';
+    if (kind === 'record' && !clipCompositor) kind = 'screen';
+    if (kind !== 'live') live?.compositor?.grabNext(null);
+    if (kind !== 'record') clipCompositor?.grabNext(null);
+    let size: { width: number; height: number } | null = null;
+    if (kind === 'screen') {
+      if (!screenTrack) return;
+      startPreviewTap(screenTrack);
+      const tap = previewTap;
+      if (!tap) return;
+      size = await grabInto((draw) => (tap.grab = draw));
+    } else {
+      stopPreviewTap();
+      const compositor = kind === 'live' ? live?.compositor : clipCompositor;
+      if (!compositor) return;
+      size = await grabInto((draw) => compositor.grabNext(draw));
+    }
+    if (!size || !previewCanvas || !previewWant) return;
+    const blob = await previewCanvas.convertToBlob({ type: 'image/jpeg', quality: 0.72 });
+    if (!previewWant) return;
+    bridge.previewFrame(await blob.arrayBuffer(), { kind, width: size.width, height: size.height });
+  } catch {
+    // další pokus za půl sekundy
+  } finally {
+    previewBusy = false;
+  }
+}
+
+let currentSettings: Settings | null = null;
+/** Povely "source" jdou po jednom (rychlé přepínání scén). */
+let sourceChain: Promise<void> = Promise.resolve();
+
+bridge.onCommand(async (command: CaptureCommand) => {
+  if (command.type === 'preview') {
+    setPreview(command.want);
+    return;
+  }
+  if (command.type === 'source') {
+    sourceChain = sourceChain.then(() =>
+      switchSource(command.sourceId, command.sourceKind, command.generation).catch((e) => {
+        report({ type: 'error', generation: command.generation, message: (e as Error).message ?? String(e) });
+      })
+    );
+    return;
+  }
+  // Vysílání má vlastní hlášení chyb - chyba vysílání nesmí shodit zásobník s klipy.
+  if (command.type === 'live-start' || command.type === 'live-stop' || command.type === 'live-scene') {
+    try {
+      if (command.type === 'live-start') await startLive(command.generation, command.preset, command.audio, command.scene ?? EMPTY_SCENE);
+      else if (command.type === 'live-scene') {
+        if (live) applyLiveScene(live, command.scene);
+      } else stopLive();
+    } catch (e) {
+      report({ type: 'live-error', generation: command.type === 'live-start' ? command.generation : live?.generation ?? 0, message: (e as Error).message ?? String(e) });
+    }
+    return;
+  }
+  try {
+    if (command.type === 'start') {
+      stopAll();
+      currentSettings = command.settings;
+      testNativeLoopback = !!command.testNativeLoopback;
+      if (command.nativeLoopbackKnown) nativeWorkedBefore = true;
+      sourceKind = command.sourceKind ?? 'screen';
+      await getStreams(command.settings);
+      const first = screenTrack ?? stream!.getVideoTracks()[0];
+      if (first) watchEnded(first);
+      startRecorders(command.settings, command.generation);
+      watchSize();
+    } else if (command.type === 'restart') {
+      if (!stream || !currentSettings) throw new Error('snímání neběží');
+      stopRecorders();
+      startRecorders(currentSettings, command.generation);
+    } else if (command.type === 'stop') {
+      stopAll();
+    } else if (command.type === 'meters') {
+      metersFast = command.fast;
+    } else if (command.type === 'clip-camera') {
+      // Jiná kamera / poloha / velikost za běhu - bez restartu zásobníku (zapnutí a vypnutí restartuje hlavní proces).
+      if (clipCompositor) clipCompositor.setScene(clipScene(command.camera));
+    }
+  } catch (e) {
+    report({ type: 'error', generation: 'generation' in command ? command.generation : generation, message: (e as Error).message ?? String(e) });
+  }
+});

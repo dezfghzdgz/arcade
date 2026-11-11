@@ -1,82 +1,1201 @@
-# Arcade – web s hrami, účty a komunitními hrami
+# Kine do PC
 
-Statický web (žádný build): `index.html` rozcestník, `zigdash/`, `splatz/`, `tower/` hry. Účty, posílání her a Arcade Pass běží přes Supabase (stejný projekt jako hry).
+Program do Windows, který běží v liště u hodin: když hraješ, drží
+posledních N sekund obrazu (a zvuku, včetně mikrofonu). Zmáčkneš klávesu
+a uloží se klip. Po dohrání se klipy nabídnou k nahrání na Kine – **nikdy
+během hry**, aby online hra na slabší wifi nelagovala.
 
-## Nasazení
-1. Obsah téhle složky do kořene GitHub repa (GitHub Desktop: zkopírovat do složky repa → Commit → Push).
-2. Vercel importuje repo, nic nenastavuješ. Používej **produkční adresu** (`https://nazev.vercel.app`), ne odkazy z Deployments (ty jsou chráněné přihlášením). Pokud i produkční adresa chce login: Vercel → projekt → Settings → Deployment Protection → Vercel Authentication → vypnout.
+Z jednoho kódu se staví **dvě appky** (`src/main/variant.ts`,
+`scripts/publish-config.mjs`): **Kine** („Kine do PC“) – první záložka
+hlavního okna je samotné Kine (web vložený do okna, `WebContentsView`,
+s přihlášením společným s appkou) a klipy s nastavením hned vedle; a
+**Kine Clipper** („Kine Klipovač“) – jen klipovač, Kine se otvírá
+v prohlížeči. Klipovač je součástí Kine do PC a funguje stejně; režim se
+v appce nepřepíná, je dán tím, kterou appku si člověk stáhl. Anglicky
+v základu, osm jazyků (stejné jako web). Pětkrát klik na logo = barva
+appky (jako na webu, ukládá se i na účet).
 
-## Zapojení Supabase (klíče už jsou vyplněné)
-1. Supabase → **SQL Editor** → New query → vlož celý soubor **`SETUP.sql`** → Run. (Založí žebříček ZigDash, účty, posílání her, Arcade Pass a nákupy z webu.)
-2. Authentication → Providers → Email → vypni „Confirm email" (jinak musí každý potvrdit mail; free tier posílá jen pár mailů denně).
-3. Zaregistruj se na webu, pak v SQL: `update public.profiles set is_admin = true where id = '<tvoje uuid>'` (Authentication → Users). Objeví se ti „Review queue".
-4. Multiplayer (Splatz, Tower, Front) nepotřebuje nic dalšího – jede přes Realtime kanály. V lobby už nebude „local (dev)", ale „online".
+Samostatný projekt vedle webu Kine (repo `Kine`). Web potřebuje
+`/api/desktop/config`, `/api/desktop/link`, `/api/desktop/me` a stránky
+`/connect`, `/download`, `/plus` (balíčky „kine-do-pc“ a „kine-do-pc-plus“).
 
-## Účty, posílání her, schvalování
-1. Supabase → SQL editor → spusť `SETUP.sql` (viz výše).
-2. Authentication → Providers → Email: nech zapnuté; pro rychlý start vypni „Confirm email" (jinak musí uživatel potvrdit e-mail – Supabase free tier posílá jen pár mailů denně).
-3. URL + anon key do `config.js` (stejné jako v hrách).
-4. Zaregistruj se na webu, pak v SQL: `update public.profiles set is_admin = true where id = '<tvoje uuid>'` (uuid najdeš v Authentication → Users). Od té chvíle máš v menu „Review queue".
+## Jak to funguje
 
-Tok: hráč se přihlásí → „Submit a game" (název, popis, odkaz na hru hostovanou kdekoliv, ikona) → ty ve frontě schválíš/zamítneš s poznámkou → schválená hra se objeví v sekci „From the community" s jménem autora a otevírá se v nové záložce.
+```
+hra běží  ──►  GameWatcher (procesy z pomocníka / tasklist + okno v popředí + Steam + seznam her)
+                    │
+                    ▼
+   skrytá stránka (Chromium getDisplayMedia + MediaRecorder, H.264)
+                    │  souvislý WebM proud po sekundě
+                    ▼
+   ffmpeg -c copy -f segment  ──►  %TEMP%\kine-buffer\gen-N\00042.mkv (2 s kousky)
+                    │                staré kousky se mažou
+   zkratka (F8) ────┤  nahrávání se zastaví (přesný konec) a hned rozjede znovu
+   zabití ve hře ───┤  (CS2 / Dota 2 Game State Integration, LoL Live Client API,
+                    │   Minecraft logs/latest.log - GameEvents)
+   Ctrl+F8 ─────────┤  nahrávání celého zápasu: od stisku se kousky nemažou,
+                    │   druhý stisk je slepí do jednoho dlouhého videa
+                    ▼
+   ffmpeg -f concat -c copy  ──►  Videos\Kine\Kine 2026-09-21 20-14-05 CS2.mp4 + .jpg
+                    │
+   hra skončila ────┤  okýnko „4 klipy z CS2 – nahrát?“ (nebo automaticky)
+                    ▼
+   Uploader: tus po 8 MiB kusech do Cloudflare → /api/videos/confirm na Kine
+             pauza, jakmile se rozjede hra; po hře pokračuje od místa, kam došel
+             → /api/videos/status dokola, dokud Kine video nezpracuje („Je na Kine“)
+```
 
-## Appka a offline
-Web je PWA: na rozcestníku je tlačítko **Nainstalovat** (Chrome/Edge na PC i Androidu; na iPhonu Sdílet → Přidat na plochu) a **Uložit hry pro offline** – service worker (`sw.js`) stáhne všechny hry do cache. Sólo hry pak fungují úplně bez internetu, online hry se načtou, ale na hraní potřebují síť. Po každém nasazení nové verze zvedni `VERSION` v `sw.js` (a `?v=` u `hub.js/hub.css` v `index.html`). Rozcestník kontroluje novou verzi při každém otevření a po aktivaci se sám jednou obnoví, takže se změny ukážou hned. Karta Party otevírá hru rovnou s založenou místností (`?create=1` funguje u všech online her).
+- **Bez překódování.** Obraz kóduje Chromium (H.264 přes hardware
+  grafiky, kde to jde), ffmpeg jen krájí a lepí. Zátěž ve hře je proto
+  malá.
+- **Nic se do hry nevkládá**, jen se snímá obrazovka – anticheaty nemají
+  důvod protestovat.
+- **Rozpoznání hry** (`src/main/gamesParse.ts`, `chooseGame`): vyhrává
+  hra, jejíž **okno je v popředí** – to hlídá pomocník
+  (`src/main/winHelper.ts`, jeden dlouho běžící PowerShell s
+  `GetForegroundWindow`), takže CS2 před sebou vyhraje nad Robloxem
+  zapomenutým na pozadí. Dál Steam (registr `RunningAppID` + název z
+  `appmanifest_<id>.acf`), ~300 známých her podle názvu .exe, hry přidané
+  hráčem, a **neznámý program přes celou obrazovku bez rámečku** (tak běží
+  skoro každá hra; pojmenuje se podle programu, hráč ji může přejmenovat).
+  Alt-tab do Discordu hru neukončí – drží se, dokud její proces běží.
+  Hra, která jen běží někde na pozadí a hráč ji nemá před sebou
+  (zapomenutý Roblox), se nehraje – po zavření CS2 appka čeká na další
+  hru, místo aby „hrála Roblox“. Minecraft Java (`javaw.exe`) se
+  potvrzuje podle příkazové řádky.
+- **Zkratky** (`src/shared/hotkeys.ts`, `src/main/hotkeys.ts`): jedna
+  klávesa s Ctrl/Alt/Shift jde přes systémovou zkratku Electronu; víc
+  kláves najednou („F8+F9“), tlačítka myši (Mouse4/5) a klávesy jako
+  Pause hlídá pomocník na Windows přes `GetAsyncKeyState`. **Ovladač**
+  (Xbox / XInput, PlayStation přes Steam): tlačítka `PadA`, `PadRB`,
+  `PadBack`… se do zkratky nahrají tak, že je hráč podrží, když je pole
+  aktivní (Gamepad API v okně); pomocník je pak čte přes
+  `XInputGetState` (`xinput1_4.dll`, záložně `xinput9_1_0.dll`) jako
+  pseudo-klávesy `0x100000 + maska`, takže platí stejná pravidla jako
+  pro kombinace kláves (držet všechno najednou, delší kombinace vyhrává).
+  Odpojené sloty ovladače se zkouší jen každé 2 s, ať to nežere výkon.
+- **Přihlášení:** jen přes prohlížeč (Kine `/connect` → jednorázový token →
+  `http://127.0.0.1:<port>/link` nebo `kine://link?…`); heslo se zadává jen
+  na webu (ochrana proti botům), appka ho nevidí. Relace se ukládá zašifrovaná
+  (`safeStorage`, na Windows DPAPI).
+  Klíče k Supabase si appka bere z `/api/desktop/config` – nic není
+  zadrátované. V režimu „Kine + klipy“ je přihlášení **společné s webem
+  v okně**: přihlásíš se v appce → web v okně dostane vlastní relaci
+  (`/connect/app?th=…`, stejný jednorázový token jako u `/connect`, jen
+  obráceně); přihlásíš se ve webu → appka si z jeho tokenu udělá svou
+  relaci. Odhlášení na jedné straně odhlásí i druhou. Obnovovací tokeny
+  se nesdílí (jsou jednorázové, sdílení by jednu stranu odhlásilo).
+- **Přehrávač a úpravy** (`src/renderer/player.ts`): klip se přehrává ve
+  vrstvě přes okno (mřížka pod ním se nehýbe). „Upravit“ rozbalí časovou
+  osu se dvěma úchyty, klávesy I/O nastaví začátek a konec, jde odstranit
+  zvuk; „Uložit jako nový klip“ nebo „Nahradit původní“ – řez dělá
+  `src/main/edit.ts` (ffmpeg, libx264 veryfast / libvpx u WebM), průběh
+  chodí do okna. **Formát na výšku 9:16** (TikTok, Shorts, Reels): ve
+  vrstvě se zastíní, co se odřízne, hráč vybere levou/střední/pravou část
+  obrazu a uloží se nový klip `… (9:16)` (výška zůstane, šířka =
+  výška·9/16; `crop` filtr, `editPlan.verticalCropFilter`), nebo čtvrtou
+  volbu **Rozmazané pozadí**: celý obraz zmenšený doprostřed a nad ním
+  i pod ním rozmazaná kopie (`split` → `crop`+`boxblur` / `scale` →
+  `overlay`, jeden filtergraph do `-vf`). Původní se nikdy nepřepisuje.
+  V úpravách je i **Náhled z tohohle snímku**: snímek, na kterém
+  přehrávač stojí, se stane náhledem klipu (`clips:thumbFrame`, ffmpeg
+  `-ss`; nový soubor náhledu, starý se smaže).
+  **Rychlost** 0,5× – 2× (zpomalení i zrychlení): obraz `setpts` + `fps`
+  zdroje (bez toho by zpomalení ztrácelo snímky a zrychlení mělo 120 fps),
+  zvuk `atempo` (hlas nezmění výšku), délka se omezuje už při čtení (`-t`
+  před `-i`); náhled v úpravách hraje zvolenou rychlostí.
+  **Text ve videu** (nahoře / uprostřed / dole; obrys, tmavý pruh, žlutý
+  pruh; tři velikosti): přibalený ffmpeg nemá `drawtext`, proto text
+  kreslí okno na canvas písmem Inter (nejvýš tři řádky, dlouhý se zmenší)
+  a hlavní proces ho jako PNG jen položí na obraz (`overlay`, po výřezu
+  9:16 i po změně rychlosti – vše jedním `-filter_complex`,
+  `editPlan.trimArgs`). Náhled textu ve vrstvě je přesně ten obrázek,
+  který se uloží.
+  **GIF** (třetí formát): úsek do 15 s, 480 px, 15 fps, paleta +
+  dithering (`editPlan.gifArgs`), bez zvuku, soubor `.gif` vedle klipu
+  (do knihovny nepatří - tam jsou jen videa), tlačítko „Ukázat ve složce“.
+  **Šipky po stranách** přepnou na předchozí / další klip podle mřížky,
+  jak ji hráč vidí (filtry, řazení), stejně klávesy ↑ ↓; v hlavičce je
+  „3 / 24“, u nahraného klipu „Kopírovat odkaz“. Klávesy: mezerník,
+  ← → (±1 s, se Shiftem 5 s), M ztlumí, F celá obrazovka, I/O v úpravách.
+  Hlasitost si přehrávač pamatuje.
+- **Živé vysílání na Kine bez OBS** (záložka „Živě“, tlačítko „Vysílat“
+  v panelu, položka v liště): název, kvalita (720p30 3 Mb/s / 1080p30
+  4,5 Mb/s / 1080p60 6 Mb/s), **kamera v rohu** (roh, velikost, kulatá /
+  zaoblená, zrcadlení), **„Hned jsem zpět“** (vlastní text, zkratka, při
+  ní se ztlumí mikrofon), ztlumení mikrofonu, živé údaje (kb/s, fps,
+  fronta v rouře) a **počet diváků** z Kine. Kamera i scény se přepínají
+  za běhu bez odpojení (příkaz `live-scene`); skládání obrazu dělá
+  `src/renderer/liveCompositor.ts` (MediaStreamTrackProcessor/Generator
+  + OffscreenCanvas) - bez kamery a „Hned jsem zpět“ jde obraz beze
+  změny (žádná práce navíc). Klíč si appka vezme z Kine (`/api/live/me`,
+  stejný jako pro OBS ve studiu) a každých 15 s hlásí, že vysílá - web
+  ukáže „živě“ hned, ne až když přenos najde Cloudflare. Snímací stránka pustí třetí recorder na stejném
+  snímání - kopie obrazové stopy zmenšená na kvalitu vysílání, zvuk hry
+  a mikrofonu smíchaný přes Web Audio (hlasitosti z nastavení, omezovač),
+  vždy H.264, klíčový snímek každé 2 s - a jeho kousky jdou rourou do
+  ffmpeg: obraz beze změny, zvuk na AAC, FLV přes RTMPS na Cloudflare
+  (`src/main/live.ts`, čistá část `livePlan.ts`). Výpadek se připojí znovu
+  sám (2, 3, 5… s, nová „generace“ = nový recorder a ffmpeg), špatný klíč
+  se neopakuje, visící spojení hlídá hlídač, nestíhající upload se ohlásí.
+  Klipy se během vysílání ukládají dál; zásobník se během vysílání
+  nevypne (konec hry, pauza, přepínač), a když ho rozjelo jen vysílání,
+  po konci se zase vypne. V Kine do PC je nad webem čas vysílání
+  a „Ukončit“, stránka vysílání s chatem se otevře v okně. Zkouška:
+  `KINE_TEST_LIVE_URL` = místní RTMP server (ffmpeg `-listen 1`).
+- **Momenty v nahrávce zápasu**: každý klip uložený během nahrávání
+  (zkratkou i sám ze zabití) je značka v nahrávce. V přehrávači jsou pod
+  videem jako tlačítka (skok 10 s před okamžik uložení), v úpravách
+  žluté značky na časové ose, na kartě vlaječka s počtem. Na Kine jdou jako
+  **kapitoly** videa (i do popisu: „0:00 Začátek / 4:55 Triple kill“),
+  po zkrácení se posunou (`editPlan.shiftMarkers`).
+- **Knihovna klipů** (`src/renderer/settings.ts`): řazení (nejnovější,
+  nejstarší, nejdelší, největší), `/` skočí do hledání; najetí myší na kartu
+  tiše přehrává klip (jeden náhled naráz, po odjetí se pustí z ruky);
+  hvězdička = oblíbený (`Clip.favorite`) a filtr „Oblíbené“; zaškrtávátka
+  na kartách vyberou víc klipů a lišta nad mřížkou je **spojí do jednoho
+  klipu** (sestřih: `editPlan.mergePlan` - společný rozměr s černými
+  pruhy místo roztažení, společné fps, zvuk 48 kHz stereo a ticho tam,
+  kde klip zvuk nemá, `concat` filtr, libx264), nebo je naráz nahraje či
+  smaže. Sestřih je nový klip `Kine … sestřih.mp4`, původní zůstávají.
+  Kartu jde **přetáhnout ven z okna** (Discord, prohlížeč, Průzkumník) -
+  `ondragstart` → `clips:dragStart` → `webContents.startDrag` se souborem
+  a náhledem jako ikonou.
+- **Koš** (`src/main/clips.ts`): smazání klip nemaže, přesune soubor do
+  `<složka s klipy>/.trash` a klip dostane `deletedAt`; v knihovně je
+  tlačítko **Koš (N)** s kartami „Vrátit“ / „Smazat nadobro“ a „Vysypat
+  koš“. Po 7 dnech (`TRASH_DAYS`) zmizí samy (při startu a jednou za
+  hodinu). Klip v koši se nenahrává ani neukazuje jinde. V Záznamu je
+  přehled **Úložiště**: klipy, koš, zásobník a volné místo na disku
+  (`storage:info`, `statfs`), s varováním pod 5 GB.
+- **Nahrávání celého zápasu** (`capture.ts` → `startRecording` /
+  `stopRecording`): zkratka (výchozí Ctrl+F8, jde vypnout), tlačítko
+  **Nahrát zápas** v postranním panelu (za běhu tiká čas a je z něj
+  Zastavit), položka v nabídce u hodin (ikona u hodin má červenou tečku).
+  Zásobník musí běžet - nahrávka jsou jeho kousky, které se od startu
+  nemažou (`prune` je nechá), stop je slepí stejně jako klip (`-c copy`,
+  H.264 s AAC), takže se nic nepřekóduje a hra to nepocítí. Uloží se jako
+  klip s `kind: 'recording'` (odznak **REC** v knihovně i po hře), název
+  „Hra · nahrávka 23. 9. 20:14“, soubor `… recording.mp4`. Strop 3 h
+  (`RECORDING_MAX_SECONDS`) a hlídání volného místa (pod 2 GB se
+  nahrávka sama uloží a skončí, kontrola po 30 s). Konec hry, pauza,
+  změna kvality, vypnutí zásobníku i ukončení appky rozjetou nahrávku
+  nejdřív uloží. Po hře se nahrávka nabídne v okýnku, ale nepředzaškrtne
+  se a v režimu „nahrát všechno“ se nenahrává sama (hodiny videa jen na
+  přání hráče). Popis na Kine: „Celý zápas …“.
+- **Postranní panel:** nahoře Kine a Klipy, pod hlavičkou Nastavení
+  Záznam / Hry / Nahrání a sdílení / Účet / O appce (každá položka
+  s ikonou), dole karta stavu: co appka dělá, jak dlouhý zásobník drží
+  a jakou zkratkou se klip uloží, tlačítka **Uložit klip** a
+  **Pozastavit / Pokračovat** (v ručním režimu Zapnout/Vypnout
+  zásobník), a účet (avatar, @jméno, PLUS) nebo Přihlásit se.
+- **Klipy samy z událostí ve hře** (`src/main/gameEvents.ts`, čistá část
+  `gameEventsParse.ts` s testy): appka pozná zabití a uloží klip bez
+  zkratky – v základu od dvojnásobného zabití výš („Dvojité zabití“,
+  „Trojité“, „Čtyřnásobné“, „Ace“ v názvu klipu), volitelně každé zabití,
+  nebo vypnuto. **CS2**: oficiální *Game State Integration* – appka
+  poslouchá na `127.0.0.1:27381` (nebo dalším volném do 27385) a do
+  `steamapps/common/Counter-Strike Global Offensive/game/csgo/cfg/` zapíše
+  `gamestate_integration_kine.cfg` (s náhodným tokenem, aby jí nic
+  cizího nepodstrkovalo události); hra ho načte při dalším spuštění a
+  posílá stav po každé změně. Počítá se jen vlastní hráč (steamid
+  pozorovaného = steamid hráče), ne spoluhráči při sledování. **League of
+  Legends**: *Live Client Data API* hry (`https://127.0.0.1:2999/liveclientdata/…`),
+  dotaz každé 2 s, jen když běží `League of Legends.exe`; události
+  `ChampionKill`/`Multikill`/`Ace` s hráčem jako zabijákem. Série zabití se
+  spojí do jednoho klipu (3,5 s klid, nejvýš 12 s), klip vzniká až po
+  konci série, aby v něm bylo všechno. **Dota 2**: stejný GSI server
+  (zprávy se poznají podle `provider.appid` 570 / 730), cfg se zapíše do
+  `game/dota/cfg/gamestate_integration/` (podsložka se založí), zabití =
+  nárůst `player.kills`. **Minecraft (Java)**: hra nic neposílá, ale
+  všechno z chatu zapisuje do `logs/latest.log` - appka soubor sleduje
+  (od konce, každých 1,5 s; složka z `--gameDir` příkazové řádky, jinak
+  `%APPDATA%\.minecraft`), jméno hráče má z řádku `Setting user:`, a
+  klipuje **smrt** (anglická znění zpráv o smrti), **PvP zabití** („… by
+  <hráč>“) a **pokrok** („has made the advancement“ v kterémkoli jazyce
+  podle názvu pokroku v závorkách). Smrt a pokrok jsou samostatné klipy
+  („Smrt“, „Pokrok“ v názvu), zabití jdou do série jako jinde.
+  **Název automatického klipu nese kontext**: u CS2 mapa a skóre
+  z pohledu hráče („Trojité zabití · Mirage 7:5“), u Doty hrdina
+  („Dvojité zabití · Crystal Maiden“). Ani jedno není zásah do hry – jsou
+  to rozhraní, která hry samy nabízejí (stejně je používá Medal, Overwolf,
+  Allstar).
+- **Nahrání na Kine s nastavením** (`src/renderer/uploadDialog.ts`):
+  tlačítko Nahrát v knihovně (a ⚙ u klipu, ⚙ v okýnku po hře) otevře
+  vrstvu se stejnými poli, jaká má web při nahrávání - název, popis
+  (předvyplněný podle hry), hashtagy (předvyplněné `#klip` + hra +
+  hashtagy z nastavení; u víc klipů se píšou jen společné navíc),
+  viditelnost **veřejné / jen odběratelé / soukromé**, kategorie (15,
+  stejné klíče jako web), jazyk, „pro děti“ / placená propagace / AI,
+  a **náhled z appky jako náhled videa na Kine** (nahraje se do úložiště
+  `thumbnails` přes relaci hráče, jako to dělá web). V Nahrání a sdílení
+  jde nastavit, jestli se appka před nahráním ptá (jinak Nahrát pošle
+  klip rovnou s výchozím), hashtagy ke každému klipu, výchozí kategorie
+  a posílání náhledu. Požadavek na nahrání (`UploadRequest`,
+  `shared/types.ts`) se uloží ke klipu (`uploadOptions`), takže přežije
+  restart appky; hlavní proces všechna pole očistí (`sanitizeUploadRequests`).
+- **„Je na Kine“ až doopravdy:** Kine video po nahrání teprve zpracovává
+  (Cloudflare) a do té doby ho v žádném seznamu neukazuje. Dřív se appka
+  po potvrzení už nezeptala, takže video mohlo na Kine viset jako
+  „zpracovává se“ donekonečna (webhook od Cloudflare není nastavený a
+  doptával se jen prohlížeč). Teď se appka ptá `/api/videos/status`
+  podle rozvrhu (3 s / 10 s / 30 s, do ~45 min; `readySchedule`), karta
+  ukazuje „Nahráno · Kine ho zpracovává…“ a teprve po `ready` „✓ Na Kine“
+  s oznámením; po restartu se čekání naváže (`upload.ready === false`).
+  Web má k tomu záchranu na své straně (`sweepProcessing`, viz repo Kine).
+- **Zvuk hry** (`src/renderer/capture.ts`): na Windows se bere „zvuk systému“
+  - Chromium loopback **výchozího výstupního zařízení Windows** (`audio:
+  'loopback'` v `setDisplayMediaRequestHandler`). Když hra hraje jinam
+  (jiné sluchátka zvolené ve hře nebo ve Windows > Zvuk > hlasitost
+  aplikací), nahrává se ticho, i když hráč hru slyší. Proto: v Záznamu
+  jsou **živé měřáky** zvuku hry a mikrofonu (AnalyserNode jen na měření,
+  10x za sekundu, když je Záznam otevřený - `audio:watch`, jinak jednou za
+  sekundu; proužek nahoru hned, dolů pomalu), pod nimi „Zvuk hry se bere
+  z: <zařízení>“, a když je zvuk hry 10 s digitální nula, nápověda co s
+  tím (u sluchátek Bluetooth vlastní); při běžící hře a 20 s ticha jednou
+  upozornění (`toastSystemAudioSilent`). Hráč může zvuk hry brát i **z
+  jiného záznamového zařízení** (`systemAudioDevice`: Stereo Mix, „What U
+  Hear“, VB-Cable), vybrat **mikrofon** (`microphoneDevice`) a nastavit
+  **hlasitost hry a mikrofonu v klipu** (`systemGain`, `micGain`, 0-200 %).
+  Změna výchozího výstupu Windows za běhu (`devicechange`) snímání rozjede
+  znovu, protože loopback zůstává na starém zařízení.
+- **Zvuk sedí na obraz (0.9.3).** Zvuk hry jde do stejného MediaRecorderu
+  jako obraz, **bez Web Audio** (to dřív při míchání přidávalo zpoždění a
+  zvuk ujížděl). **Mikrofon má vlastní MediaRecorder** a vlastní segmenter
+  (`m00042.mka`, `mic.csv`) a do klipu se přimíchá až při uložení:
+  `planClip` (`src/main/segments.ts`) položí každý kousek mikrofonu podle
+  hodin počítače na místo vůči obrazu STEJNÉ generace (i přes mezery po
+  uloženém klipu), odečte zpoždění mikrofonu podle Chromia
+  (`getSettings().latency`), ffconcat s `duration`/`outpoint`, `aresample
+  async` proti ujetí; `clipMuxArgs` (`src/main/editPlan.ts`) smíchá
+  (`amix normalize=0` + `alimiter latency=1`, ať limiter nezpožďuje).
+  Ověřeno skutečným ffmpeg: klik v obraze, zvuku hry i mikrofonu do 2 ms.
+  Ruční **posun zvuku** ±300 ms (`audioOffsetMs`) pro případ, že by přesto
+  něco nesedělo. Výsledný zvuk AAC 192 kb/s.
+- **Hra a mikrofon zvlášť.** Klip s oběma má tři stopy: *Hra + mikrofon*
+  (výchozí, hraje všude), *Hra*, *Mikrofon* (`separateMicTrack`, zapnuté).
+  V úpravách je místo „bez zvuku“ výběr **Hra + mikrofon / Jen hra / Jen
+  mikrofon / Bez zvuku** (`trimAudioPlan`) - klip jde uložit bez vlastního
+  hlasu. Kamarádi z hlasového chatu ve hře jsou ve zvuku hry. Na Kine jde
+  takový klip **jen se smíchanou stopou** (Kine hraje jednu a nikde není
+  psáno, kterou by vybral): kopie bez překódování v `userData/upload-cache`
+  (`prepareFile` v uploaderu), přežije restart kvůli navázání, po nahrání
+  zmizí.
+- **Sluchátka Bluetooth.** Jakmile cokoli otevře mikrofon sluchátek
+  Bluetooth, Windows je přepne do režimu hovoru (HFP): všechno zní hůř,
+  mono, a zvuk hry jde na jiné „zařízení“, které loopback nenahrává -
+  ticho. Appka proto výchozí mikrofon Bluetooth **sama vynechá** (vezme
+  jiný vstup, nebo nahrává bez mikrofonu), řekne to (`bluetoothMic`) a v
+  seznamu mikrofonů je u Bluetooth varování. Ručně vybraný se použije.
+- **Kvalita a zátěž.** Výchozí 1080p / 60 fps / 20 Mb/s (nastavení v3:
+  kdo měl staré výchozí 1080p30 8 Mb/s, dostane nové; vlastní hodnoty
+  zůstávají). Snímací stránka před startem zjistí, jestli grafika umí
+  kódovat H.264 (`VideoEncoder.isConfigSupported`, `prefer-hardware`):
+  s hardwarem profil High, bez něj se nahrává nejvýš 30 fps (procesor by
+  jinak hru brzdil). V Záznamu je vidět, čím se kóduje, předvolba
+  „Doporučené (1080p60)“ a „Nízká zátěž“. `contentHint = 'motion'`.
+- **Nahrávka zápasu přežije pád.** Při nahrávání celého zápasu leží ve
+  složce zásobníku `recording.json` a v každé generaci `gen.json` (start,
+  formát, zvuk). Spadne-li appka nebo Windows, při dalším startu se
+  složka místo smazání odloží (`<název>.recover-*`, `salvageLeftovers`) a
+  slepí jako nahrávka „obnoveno po pádu“ (`recoverLeftovers`,
+  `recoverySegments`); když složku ještě drží spadlý ffmpeg, nechá se být
+  a zásobník jde vedle. Spadne-li snímání za běhu (snímací stránka,
+  ovladač grafiky, obrazovka přestane posílat obraz, chyba kodéru -
+  `onState(..., runtime)`), kousky nahrávky se odloží a slepí hned a
+  zásobník se za 3 s sám rozjede znovu (nejvýš 3x za 10 minut,
+  `restartAfterCrash`) - dřív stál až do konce hry. I zastavení nahrávky
+  ve chvíli pádu (hra spadla s ním) kousky nezahodí (`interrupted`).
+- **Diagnostika.** O aplikaci > „Zkopírovat diagnostiku“: verze, systém,
+  grafika, kodér, nastavení snímání a zvuku, hladiny a konec protokolu do
+  schránky - bez jména uživatele ve cestách a bez e-mailů.
+- **Klipy na výšku v knihovně** mají stejně velký náhled jako ostatní
+  (16:9, obraz uprostřed na rozmazaném pozadí, štítek 9:16).
+- **Zkoušky zvuku:** `KINE_TEST_FAKE_AUDIO=1` dá Chromiu falešný mikrofon
+  s tónem a ověří měřáky i slyšitelný zvuk v klipu (`volumedetect`);
+  `=full` k tomu vezme falešný vstup jako „zvuk hry“ a ověří klip se třemi
+  stopami a ořez „jen hra“.
+- **Kine v prohlížeči (Kine Clipper):** „Otevřít na Kine“ jde přes
+  `/connect/app` s jednorázovým tokenem, takže se prohlížeč přihlásí
+  stejným účtem jako appka - čerstvě nahraný (soukromý) klip je hned
+  vidět, i když v prohlížeči nikdo přihlášený nebyl. Bez přihlášení v
+  appce jde odkaz rovnou.
+- **Sdílení:** u nahraného klipu je „Kopírovat odkaz“ (odkaz na Kine do
+  schránky) a „Poslat na Discord“ – webhook kanálu se vyplní v záložce
+  Nahrání a sdílení. Nahraný klip se pošle jako název + odkaz, **nenahraný
+  rovnou jako soubor** (multipart, do 10 MB - `DISCORD_FILE_MAX_BYTES`;
+  větší má tlačítko vypnuté s vysvětlením), a hotový **GIF má v přehrávači
+  tlačítko Poslat na Discord** (`shareFileToDiscord`, jen soubory ze
+  složky s klipy).
+- **Dvě appky vedle sebe** se hlídají: hlídání her dává každé kolo (5 s)
+  seznam procesů i hlavnímu procesu (`onProcesses`); Kine Clipper se při
+  běžícím `Kine.exe` sám vypne (klipovač je v Kine do PC), Kine při
+  běžícím `Kine Clipper.exe` upozorní. Zkratka, kterou držel druhý
+  program, se každých 15 s zkouší zaregistrovat znovu (`HotkeyManager.retry`).
+  Každá appka má vlastní složku zásobníku (`%TEMP%\kine-buffer`,
+  `%TEMP%\kine-clipper-buffer`); když ji nejde vyčistit (EPERM - drží ji
+  jiný proces), vezme se `<název>-<pid>` místo pádu nahrávání.
+- **Ikona v barvě hráče** (`src/main/icon.ts`): ikona okna a ikona u hodin
+  se přebarví podle zvolené barvy Kine (tyrkys v PNG se nahradí, tmavý
+  podklad zůstane); značka v panelu je SVG v `--brand`. Ikona .exe a
+  zástupce zůstává tyrkysová (za běhu se měnit nedá).
+- **Aktualizace** (`src/main/updater.ts`, čistá část `updaterParse.ts`):
+  kontrola po startu a každých 6 h. Zkouší postupně zdroj z
+  `app-update.yml` (naše úložiště R2, nebo GitHub), pak GitHub Releases
+  přímo a nakonec web Kine (`/api/desktop/latest`) - když automatické
+  stažení nejde, řekne aspoň „je venku verze X“ s tlačítkem ke stažení,
+  a v záložce O appce je vidět i důvod (např. `404 latest.yml`). Stahuje
+  se **jen když se nehraje** (vyšla-li verze během hry, stáhne se po
+  ní), instaluje po ukončení appky.
+- **Web Kine v okně spí**, když ho nikdo nevidí: při přepnutí na jinou
+  záložku, zmenšení okna a hlavně **po celou dobu, co běží hra** se
+  zastaví přehrávání, ztlumí zvuk a omezí běh na pozadí
+  (`sleepKineView`) - procesor, grafika i síť patří hře. Při návratu
+  na záložku (a bez hry) se probere.
+- **Po hře** umí okýnko s klipy **spojit vybrané do jednoho klipu**
+  (sestřih z celého hraní) - spojený klip zůstane vybraný k nahrání,
+  původní se odškrtnou. Popis nahraného videa je v jazyce appky a končí
+  odkazem na stažení appky (`uploadDescription*`).
+- **Výkon appky** (`src/shared/performance.ts`): jedna volba v Záznamu -
+  Úsporný / Vyvážený / Výkon - řídí, jak často se appka na co ptá: hlídání
+  her (10 / 5 / 2 s), smyčka pomocníka pro kombinace kláves a ovladač
+  (50 / 30 / 15 ms), popředí a seznam procesů, dotazy na LoL (4 / 2 / 1 s),
+  náhledy při najetí (v úsporném vypnuté) a kontrola aktualizací (1× denně
+  / 6 h). Změna se projeví hned (restart smyčky pomocníka a hlídání her).
+  Kvalitu klipů to nemění - ta je zvlášť; v úsporném režimu se nabídne
+  tlačítko Nízká zátěž (720p).
+- **Po aktualizaci** appka jednou řekne, že běží nová verze
+  (`toastUpdated`, klik otevře O appce); pamatuje si `lastVersion`.
+- **Zátěž při hraní** je záměrně malá: pomocník pro Windows se bez
+  složených zkratek ptá jen jednou za sekundu (s nimi každých 30 ms, aby
+  neušel stisk), programy a okna čte přes Win32 API (`EnumProcesses`,
+  `QueryFullProcessImageName`, `EnumWindows`) místo `Get-Process`, a
+  appka díky tomu nespouští každých pár sekund `tasklist` ani `reg`.
+  Hlídání her jede jednou za 5 s. V nastavení kvality je tlačítko **Nízká
+  zátěž (720p)** – 720p / 30 fps / 5 Mb/s jedním klikem.
 
-## Program na PC
-Ve složce `desktop/` je Electron obal – návod tamtéž (výsledek je `.exe` instalátor / přenosné exe, na Macu `.dmg`). Hotové soubory nahraj do GitHub Releases a odkaz dej na rozcestník.
+## Novinky 0.9.6
 
-## Postup u účtu
-`SETUP3.sql` založí tabulku `progress`. Přihlášený hráč (session z rozcestníku) má postup v Roll, Tubes a Bricks uložený u účtu a na jiném zařízení pokračuje tam, kde skončil (vyšší level vyhrává). Bez přihlášení zůstává postup jen v prohlížeči. Hry čtou session ze stejného localStorage jako rozcestník; po hodině bez otevřeného rozcestníku token vyprší a ukládá se jen lokálně (otevřením rozcestníku se obnoví).
+- **Klip hned:** okénko „Ukládám klip…“ vyskočí v okamžiku stisku zkratky
+  (ne až po uložení) a pak se změní na „Klip uložen“.
+- **Konec nahrávky zápasu:** stav „Ukládám…“ s procenty hned po kliknutí;
+  další kliknutí nahrávku neuloží znovu (jedno ukládání, `finishRecording`).
+- **Žádná okénka po spuštění:** problémy (zkratka obsazená, mikrofon…) jsou
+  tichá upozornění v okně; okénkem jen jednou, když začne hra a klipovací
+  zkratka pořád nejde - nejdřív 45 s po spuštění appky.
+- **Po spuštění:** volba Snímat hned / až se hrou / pozastavené
+  (`launchCapture`).
+- **Méně zátěže:** pomocník (PowerShell) posílá jen změny, ffmpeg zásobníku
+  a ukládání nahrávek běží s nižší prioritou, na baterii 720p · 30 fps,
+  přehled spotřeby appky v Nastavení.
+- **Místo na klipy:** strop (20-500 GB); nejstarší klipy se smažou samy -
+  nikdy oblíbené, nahrávané na Kine ani čerstvé (hodinu od uložení).
+- **Vysílání:** záložka Živě (kamera, „Hned jsem zpět“, diváci, viz výš).
 
-## Rozcestník
-Na PC dva sloupce: vlevo Offline · sólo, vpravo Online · s kamarády (Party první). Na mobilu jeden sloupec, hry se střídají online/sólo.
+## Novinky 0.9.7
 
-## Nové hry
-- **Fleet** (`fleet/`) – námořní bitva až pro 8: joystick = kormidlo (loď se otáčí omezenou rychlostí, zrychluje a dojíždí), tlačítko = salva ze obou boků (3 koule na stranu), ostrovy jako překážky, 3 zásahy = ke dnu, respawn 3 s. Módy: Bitva, Flotily (týmy), Král moří (zóna se stěhuje), Poklad (truhly, potopená loď půlku vysype).
-- **Roll** (`roll/`) – kulička jede, dokud nenarazí, a maluje; obarvi všechno. Levely se generují ze seedu (blob s chodbami) a ověřují hledáním nejkratšího řešení – hvězdičky podle počtu tahů proti optimu. Zpět, restart, přeskočit za reklamu. Žebříček = dosažený level.
-- **Tubes** (`tubes/`) – přelévání barev (Water Sort): levely se generují zamícháním vyřešeného stavu zpětnými tahy (vždy řešitelné), počet barev roste s levelem až do 12. Zpět, restart, 3 nápovědy zdarma a další za reklamu, zkumavka navíc za reklamu.
-- **Flow** (`flow/`) – spojování teček (Flow Free): mřížka se rozdělí náhodnými cestami, jejich konce jsou tečky, takže je vždy řešitelné; 5×5 až 9×9, tažením prstem, přerušení cizí trubky, nápovědy (3 + za reklamu), přeskočení za reklamu, postup u účtu.
-- **Snakes** (`snakes/`) – multiplayer had až pro 8 na mřížce 36×60: joystick = směr, držení BOOST = zrychlení za cenu délky, jídlo = bod, náraz soupeře do tebe = 3 body, tělo mrtvého hada se mění v jídlo. Módy Aréna (respawn), Poslední (bez respawnu), Týmy.
-- **Sketch** (`sketch/`) – kreslení a hádání naživo (skribbl): 2–10 hráčů, 3 kola, kreslíř vybírá ze 3 slov (CZ/EN seznam ~230 slov), tahy se posílají živě (rozpracovaný tah každých 80 ms), guma, výplň, zpět; nápověda postupně odkrývá písmena (max polovinu); body 100–250 za rychlost hádání + 40 kreslíři; „Blízko!" u překlepů; chat.
-- **Stack** (`stack/`) – skládání věže: blok jede ze strany, ťuknutím padá, přesah se odřízne; přesná trefa (do 7 px) blok zvětší a přičte kombo. Žebříček.
-- **Party** (`party/`) – „1234 Player Games" online: 2–8 lidí, každý na svém mobilu, 5/8/12 kol náhodných miniher: Reflex, Ťukací závod, Rychlá matika, Barvy (Stroop), Drž 5 s, Počítání teček, Najdi jiný, Simon, Terč, Zastav lištu, Psaní, Větší?. Body 3/2/1 za pořadí v kole, mezi koly tabulka. Reakční časy se měří lokálně, takže latence nikoho neznevýhodní.
-- **Pong** (`pong/`) – online Pong 1v1, 2v2 i 2v1 (sám proti dvěma má pálku 1,6×), cíl na body (7/11/15) nebo na čas (60/120/180 s), míček s každým odrazem zrychlí o 4 % (`speedUp`); módy Klasika, Rychlý, Dva míčky. Klient si míček extrapoluje mezi snapshoty (15×/s), pálku předpovídá.
-- **Solitaire** (`solitaire/`) – Klondike po 1/po 3/denní, tap = výběr a přesun, dvojklik = nahoru, tažení, zpět, automatické dohrání, žebříček časů.
-- **Boom** má 5 módů: Klasika, Chaos (2 bomby), Zóna (aréna se zmenšuje), Týmy (bombu jen soupeři), Lovec (bomba nebouchá, kdo ji drží, sbírá body, 60 s).
-- **Boom** (`boom/`) – horký brambor až pro 8: bomba se předává dotykem, dash = odraz/únik, komu bouchne, vypadá; poslední bere 3 body, první na 6 vyhrává. Mód Chaos = dvě bomby.
-- **Doodle** (`doodle/`) – tichá pošta: napiš → nakresli → uhodni, 2–10 hráčů, alba na konci. Hostitel ovládá ukazování alb.
-- **Merge** (`merge/`) – sólo 2048 s denní výzvou (stejný seed pro všechny) a globálním žebříčkem. Žebříček potřebuje **`SETUP2.sql`** (obecná tabulka pro další hry).
-- **Snake** (`snake/`) – klasika: režim Klasika (okraje průchozí) a Stěny, bonusové hvězdy, zrychluje s každým jablkem, žebříček.
-- **Mines** (`mines/`) – Minesweeper: Lehká/Střední/Těžká + Denní pole (stejné pro všechny, na čas), první klik vždy bezpečný, chord (klik na číslo odkryje okolí), podržení = vlajka, žebříček nejlepších časů.
-- **Bricks** (`bricks/`) – Breakout: 6 vzorů levelů, cihly ocelové (nezničitelné), výbušné, zlaté a dvojité; power-upy (×3, širší pálka, laser, život) i power-downy (užší pálka, rychlý míč); míč zrychluje odrazy i s levelem, pálka se s levelem zužuje.
-- **Sudoku** (`sudoku/`) – generátor s garancí jediného řešení, Lehké/Střední/Těžké/Denní, poznámky, 3 chyby = konec, žebříček časů. **Nápověda:** první zdarma, další za odměněnou reklamu (na webu simulace 3 s, v appce AdMob).
-- Sdílený modul `js/common.js` (jazyk, zvuk, žebříček) – nová sólo hra se dá postavit stejně.
-- Jméno z účtu Arcade se automaticky přebírá do všech her (dokud si ho hráč ve hře nepřepíše).
+- **Aktualizace s průběhem:** O appce ukazuje stahování nové verze
+  (procenta, MB, rychlost) a pak jedno tlačítko **Aktualizovat teď** -
+  appka se zavře, tiše nainstaluje novou verzi a sama se znovu spustí
+  (`installUpdateNow` -> `quitAndInstall(true, true)`). Během vysílání a
+  nahrávání zápasu to nejde (o vysílání by hráč přišel). Stejné tlačítko
+  je v liště u hodin a odkaz v postranním panelu. Kine Clipper má v O appce
+  svůj název.
+- **Zvuk hry nejde otevřít** (chyba „the audio source could not be
+  opened“): snímání to samo zkusí znovu, pak vezme zařízení, které zvuk
+  počítače umí nahrát (Stereo Mix, VB-Cable, Voicemeeter), a když nic,
+  řekne proč, jaké je výchozí zařízení a co s tím (4 kroky, tlačítko Zkusit
+  znovu a Zvuk ve Windows). V seznamu zdrojů jsou taková zařízení zvlášť od
+  mikrofonů; v diagnostice je řádek „Game audio“.
+- **Záznam vysílání na Kine:** po skončení vysílání je v záložce Živě karta
+  se záznamem - název, kdo ho uvidí a **Zveřejnit záznam na Kine**
+  (`/api/live/recordings`, `videoUid: 'latest'`). Nebo se zveřejní sám:
+  volba **Po skončení vysílání** (stejné nastavení jako ve studiu na webu,
+  ukládá se na Kine). Zveřejněný záznam na webu přehrává i záznam chatu.
+- **Chat v okně:** chat vlastního vysílání v malém okně (dá se nechat
+  nahoře nad hrou v okně bez rámečku), včetně moderování.
+- **Vzhled (Nastavení -> Vzhled):** klasický nebo **sklo** - průhledné
+  plochy nad barevným rozmazaným pozadím (moje barva, Noc, Západ slunce,
+  Les, Oceán, Neon), posuvník průhlednosti, barva appky přímo v nastavení.
+  Na Windows 11 jde zapnout **průhledné okno** (Acrylic - prosvítá plocha za
+  appkou; `setBackgroundMaterial`). Pozadí je jedna vrstva `.app-backdrop`,
+  nic se nerozmazává za běhu.
+- **Přehrávač klipů přes celou obrazovku** (F, dvojklik, ⛶): celá scéna
+  i se šipkami na předchozí / další klip, nahoře název a pozice „3 / 12“;
+  ovládání se po chvíli bez pohybu myši schová.
+- Nahrání bez přihlášení hlásí přeloženou chybu (dřív česká odpověď
+  serveru i v angličtině); klik na okénko vede do Účtu.
 
-## Arcade Pass (Stripe)
-1. Stripe → Products → „Arcade Pass", recurring monthly (€3.99) → Payment Link; After payment → `https://tvoje-adresa/?paid=1`. URL do `config.js → stripePassLink`.
-2. Nasaď webhook: `supabase functions deploy arcade-stripe --no-verify-jwt`, `supabase secrets set STRIPE_SECRET_KEY=sk_… STRIPE_WEBHOOK_SECRET=whsec_…` (**tajný klíč nikam jinam nedávej**, ani do chatu).
-3. Stripe → Webhooks → URL funkce, eventy `checkout.session.completed`, `invoice.paid`, `customer.subscription.updated`, `customer.subscription.deleted`.
-Pass se ukládá k účtu (`profiles.pass_until`). Hry zatím reklamy vypínají podle vlastního nákupu v každé hře; propojení „pass na účtu = bez reklam ve hrách" je další krok (hry se musí naučit číst přihlášení z hubu).
+## Vývoj
 
-## Hrát znovu
-Po kole mají všichni tlačítko „Hrát znovu" s 20s odpočtem (x/y hlasů). Jakmile odhlasují všichni lidé (nebo dojde čas), hostitel dostane lobby s nastavením a může rovnou odstartovat další kolo; ostatní čekají v lobby.
+```
+npm install
+npm start          # sestaví (esbuild + tsc) a spustí Electron
+npm test           # testy čisté logiky (segmenty, hry, tus, uploader…)
+```
 
-## Přidání vlastní hry napevno
-Složka `nazev/` + záznam v `hub.js → BUILTIN`.
+Užitečné proměnné prostředí:
 
-## Hostující hry (`guest/`)
-Sedm her od jiných vývojářů ze soutěže js13kGames, každá ve vlastní složce s `CREDITS.txt`. **Licence:** Q1K3 a UNDERRUN jsou MIT (ověřeno na GitHubu autora), PACKABUNCHAS je podle forků MIT (ověř u autora), u PATH TO GLORY, 666, SPACE a skákačky od Careless Labs licence není známá – než je necháš na webu s reklamami, napiš autorům o svolení (js13kgames.com má u každé hry odkaz na autora). Karty na rozcestníku uvádějí autora a zdroj. Do každé hry je vložen jen malý odkaz „‹ Arcade" vlevo nahoře, kód her je jinak nezměněný.
+| proměnná | k čemu |
+| --- | --- |
+| `KINE_DEBUG=1` | protokol i na stdout (jinak jen `%APPDATA%\kine-desktop\logs\kine.log`) |
+| `KINE_USER_DATA=…` | jiná složka s nastavením (zkoušky) |
+| `KINE_FFMPEG=…` | vlastní ffmpeg místo přibaleného |
+| `KINE_TEST=1` | samočinná zkouška: zásobník → dva klipy → přehrávač, úpravy, 9:16, GIF, sestřih, oblíbené, panel → screenshoty → konec (`tests/e2e.sh`) |
+| `KINE_TEST_LIVE_URL` | (se `KINE_TEST`) vysílání jde sem místo na Kine - `tests/e2e.sh` pouští místní RTMP server a kontroluje, co přišlo |
+| `KINE_NO_HELPER=1` | nespouštět pomocníka pro Windows (hry jen podle seznamu a Steamu, jen jednoduché zkratky) |
+| `KINE_VARIANT=clipper` | při vývoji se chovat jako appka Kine Clipper (zabalená appka to má v package.json) |
 
-## Rozcestník ve stylu herního portálu
-Dlaždice s velkými náhledy, hledání, přepínač Vše / Sólo / S kamarády, kategorie (Akce, Hlavolamy, Arkády, Strategie, Párty, Sport, Karty). Kategorie hry je v `hub.js → BUILTIN → cat`.
+Adresu Kine jde v nastavení (Účet → Adresa Kine) přepnout třeba na
+`http://localhost:3000`.
 
-## Arcade Rating (`SETUP4.sql`)
-Každá dohraná hra přičte přihlášenému hráči body (sólo: 5–30 podle skóre, časové hry 15; online: polovina získaných mincí; Doodle 15, Party 20). Server omezuje 60 bodů na hru a 40 zápisů za hodinu. Hodnosti: Bronze 0 · Silver 300 · Gold 1000 · Platinum 2500 · Diamond 6000 · Elite 15000. Žebříček (top 100 + tvoje pořadí) je pod tlačítkem ★ Rating. Body posílá `rating.js` (vložený ve všech hrách).
+## Vydání nové verze
 
-## Jak legálně přidat cizí hry
-- **GameDistribution / GameMonetize / GamePix** – katalogy tisíců HTML5 her s oficiálním embedem (iframe) a podílem z reklam; po registraci dostaneš odkazy, které stačí přidat do `BUILTIN` s `url` (otevře se ve stejné kartě). Tohle je cesta, jak fungují CrazyGames i Poki.
-- **Open-source hry s MIT/GPL licencí** (GitHub, js13kGames s uvedenou licencí) – kopírovat lze s uvedením autora.
-- **Vlastní tvůrci přes „Poslat hru"** – hráči ti hry pošlou, ty schválíš (už funguje).
-- Bez licence/svolení hry nekopíruj – u webu s reklamami to autoři řeší.
+1. V `package.json` zvedni `version`.
+2. Nahraj soubory do repa (git, nebo přes web GitHubu) a spusť workflow
+   **Vydání** (nebo pushni tag `v0.2.0`).
+3. GitHub Actions (`.github/workflows/release.yml`) na Windows sestaví
+   obě appky – `Kine-Setup.exe` (Kine do PC) a `Kine-Clipper-Setup.exe`
+   (Kine Clipper) – a nahraje je do **Cloudflare R2** do složek `full/`
+   a `clipper/` (odsud stahují lidi z `kine…/download` a odsud si
+   nainstalované appky berou aktualizace podle `latest.yml`) a záložně do
+   GitHub Releases. `scripts/publish-config.mjs` k tomu z proměnných
+   prostředí sestaví `electron-builder.generated.yml` (Kine) a
+   `electron-builder.clipper.yml` (Kine Clipper): název, ikona, appId,
+   složka s aktualizacemi, podpis. Instalátor je jen anglicky. Krok za
+   krokem včetně R2 a podpisu: **JAK-VYDAT.md**.
+
+**Podpis:** bez certifikátu Windows ukáže „Neznámý vydavatel“ a SmartScreen
+varuje. S Azure Trusted Signing (tajemství `AZURE_*` v GitHubu) workflow
+podepisuje sám.
+
+## Struktura
+
+```
+src/main/        hlavní proces (Electron, Node)
+  main.ts        tray, okna (nastavení/klipy, okýnko po hře, okno Kine), IPC
+  variant.ts     která ze dvou appek běží (Kine / Kine Clipper) - název, ikona, režim
+  icon.ts        ikona okna a lišty přebarvená podle barvy Kine hráče
+  capture.ts     zásobník: skrytá stránka → ffmpeg segmenty → klip
+  segments.ts    čistá logika výběru kousků, plán klipu s mikrofonem, obnova po pádu (test)
+  games.ts       hlídání her (procesy, Steam, popředí), gamesParse.ts čistá část (test)
+  gameEvents.ts  klipy samy z událostí: CS2 Game State Integration (lokální server + cfg), LoL Live Client API
+  gameEventsParse.ts  čistá část: rozbor událostí CS2/LoL, série zabití, obsah cfg (test)
+  edit.ts        zkrácení / ztlumení / výřez 9:16 / rychlost / text, sestřih víc klipů, GIF (ffmpeg), náhled k upravenému klipu
+  live.ts        živé vysílání na Kine: klíč z Kine, ffmpeg -> RTMPS, znovupřipojení, hlídač
+  livePlan.ts    čistá část vysílání: adresa, argumenty ffmpeg, průběh, pokusy (test)
+  editPlan.ts    čistá část úprav: slepení klipu se stopami zvuku, zkrácení (trimArgs), sestřih, GIF, momenty, rozbor hlavičky ffmpeg (test)
+  winHelper.ts   pomocník pro Windows: podepsaný kine-helper.exe (src/helper/KineHelper.cs), jinak PowerShell + C# přes Add-Type: okno v popředí, procesy, okna, Steam, stav kláves
+  hotkeys.ts     zkratky: systémové (Electron) + složené přes pomocníka
+  clips.ts       knihovna klipů (index.json ve složce s klipy)
+  updater.ts     aktualizace: R2 / GitHub / web Kine jako záloha, stahování až po hře; updaterParse.ts čistá část (test)
+  uploader.ts    fronta nahrávání, pauza při hře (test), tus.ts klient (test)
+  auth.ts        přihlášení, lokální server pro /connect, kine:// odkazy
+  kineApi.ts     volání Kine (create-upload-url, confirm)
+  settings.ts    nastavení (userData/settings.json), shared/settingsSchema.ts (test)
+  toast.ts       okénko „Klip uložen“ v rohu
+src/renderer/    stránky oken: settings (postranní panel s kartou stavu, záložka Kine s lištou,
+                 klipy s filtry / oblíbenými / výběrem a sestřihem, nastavení, průvodce),
+                 player (přehrávač + úpravy klipu ve vrstvě: řez, 9:16, GIF, rychlost, text, momenty), review
+                 (okýnko po hře), toast, capture (skrytá snímací)
+src/preload/     most window.kine / window.kineCapture
+src/shared/      typy, překlady (i18n/: en cs sk de pl es fr uk), názvy klipů, zkratky, plány, výkon (performance.ts)
+```
+
+## Předplatné
+
+Pravidla jsou v `src/shared/plan.ts` a na webu v `lib/plus.ts`; appka se
+ptá `/api/desktop/me`, kdo je a co smí. Tři varianty: **Kine Plus**
+(web: odznak, vyšší limit nahrávání), **Klipy Plus** (appka: „nahrát
+všechny klipy automaticky“, klipy až 5 minut) a **Kine Plus + Klipy**.
+Zdarma: klipování bez omezení, klipy do 60 s, nahrání na Kine ručně
+(okýnko po hře, záložka Klipy) – se stejnými pravidly jako každé video.
+Když Klipy Plus vyprší, appka se sama vrátí na ruční nahrávání. Barvu
+Kine, kterou má hráč u loga na webu, appka převezme z jeho účtu.
+
+## Co ještě není
+
+- macOS/Linux (od 0.13.0 se stavějí instalátory): zvuk hry jen ze vstupu,
+  který ho nahrává (Linux „Monitor of …“ sám, macOS po instalaci BlackHole),
+  bez pomocníka (hry podle seznamu procesů a Steamu, jen jednoduché
+  zkratky, bez gamepadu), macOS bez podpisu Apple (ruční „Přesto otevřít“,
+  aktualizace ručně).
+- Klip je dlouhý N až N+2 s (kousky po 2 s, řez jen na klíčovém snímku).
+  Když hra mezitím přepnula rozlišení, klip začíná až od místa, kde má
+  obraz stejné rozměry (jinak by ho prohlížeč nepřehrál).
+- Náhledy klipů (první snímek videa) leží v `%APPDATA%\kine-desktop\thumbs`,
+  ve složce s klipy jsou jen videa.
+- Hry v režimu *exclusive fullscreen* okénko „Klip uložen“ neukážou –
+  přijde zvukové pípnutí a systémové oznámení.
+- Klipy samy z událostí umí zatím jen CS2 a League of Legends (jediné
+  velké hry s oficiálním rozhraním pro stav hry). U CS2 se cfg zapíše, až
+  když appka běží s CS2 nainstalovaným přes Steam; hra ho načte při
+  dalším spuštění. Ostatní hry: jen zkratka.
+- Zkratka na ovladači je podle dokumentace XInput a projde testy, ale na
+  skutečném ovladači zatím vyzkoušená není (tady žádný není). Ovladač
+  připojený přes Bluetooth bez XInputu (starší DualShock bez Steamu)
+  appka nevidí.
+
+## Novinky 0.9.8
+
+- **Barvy podle obrazu (Nastavení -> Vzhled):** kolem přehrávače klipů
+  svítí barvy videa (jako ambientní režim na YouTube) a se sklem se pozadí
+  appky mění podle klipu, na který se díváš - i podle karty pod myší.
+  Levně: obraz se kreslí do malinkého plátna (desítky pixelů) už rozmazaný
+  a jen se roztáhne, žádný filtr přes celé okno ani čtení pixelů
+  (`src/renderer/ambient.ts`). Funguje i v klasickém vzhledu (jen světlo
+  kolem přehrávače).
+- **Pohyblivé barvy:** se sklem se barvy pozadí pomalu přelévají (jen
+  posun vrstev; s vypnutými animacemi ve Windows stojí).
+- **Kine na vlastní doméně:** appka si novou adresu webu vezme sama
+  (`src/main/siteMove.ts`) - po startu a jednou denně se zeptá webu na
+  hlavní adresu (`/api/desktop/config`) a přejde na ni, jen když tam běží
+  stejné Kine (stejná databáze) a nová adresa to potvrdí. Nikdy zpátky na
+  `*.vercel.app` a nikdy z localhostu. Přihlášení zůstává.
+- **Podpory ve vysílání:** v záložce Živě je nápověda - podpory od diváků
+  (💛) se v okně chatu ukážou zvýrazněné a ikonkou 🔊 si je streamer nechá
+  číst nahlas (nebo všechny nové zprávy).
+
+## Novinky 0.9.9
+
+- **Aktualizace už nesmaže appku.** Při aktualizaci z 0.9.7 na 0.9.8 se
+  stalo, že Windows (Smart App Control - "Část této aplikace byla
+  zablokována") zablokoval kus instalátoru, který rozbaluje novou verzi.
+  Instalátor z electron-builderu ale v tu chvíli už měl starou verzi
+  odinstalovanou - zůstala prázdná složka a zástupce do prázdna ("Problém se
+  zástupcem"). Ověřeno pod wine: zablokovaný `nsis7z.dll` = appka pryč.
+  Teď (`build/installer.nsh`):
+  - nová verze se nejdřív celá rozbalí a zkontroluje a teprve potom se stará
+    odinstaluje; když rozbalení nejde, stará verze zůstane, instalátor to
+    řekne a appku znovu spustí,
+  - když starou verzi nejde odinstalovat (soubory drží jiný program),
+    zůstane a spustí se znovu (dřív instalátor jen potichu skončil),
+  - po instalaci se zkontroluje, že appka na disku opravdu je,
+  - zástupci, kteří před aktualizací byli a během ní zmizeli (klik na
+    zástupce zrovna ve chvíli výměny souborů -> Windows nabídne smazat),
+    se vytvoří znovu,
+  - čerstvá instalace, kterou Windows zablokuje, už nevytvoří zástupce do
+    prázdna - řekne, co se stalo a co s tím.
+  Výsledek zapíše do `%LOCALAPPDATA%\<appka>-updater\installer-result.txt`.
+- **Aktualizace jen tlačítkem a s okénkem:** "Aktualizovat teď" spustí
+  instalátor viditelně ("Installing, please wait…"), ne potichu. Tichá
+  instalace po ukončení appky je vypnutá (při vypínání Windows ji systém
+  mohl useknout uprostřed). Stažená aktualizace počká na kliknutí.
+- **Appka řekne, jak aktualizace dopadla** (`src/main/updateOutcome.ts`):
+  když neprošla, otevře se O appce s vysvětlením (Smart App Control /
+  antivir / soubory držené jiným programem / instalátor se nespustil) a
+  tlačítky rovnou do Zabezpečení Windows (nastavení Smart App Control,
+  Historie ochrany). U stažené aktualizace appka upozorní, když je Smart
+  App Control zapnutý.
+- **Pomocník při Smart App Control:** Windows pouští nepodepsané skripty
+  jen v omezeném režimu, kde pomocník (PowerShell) nejde. Dřív se tvářil,
+  že běží, a do logu psal chybu každých 30 ms; teď to pozná, skončí, appka
+  jede bez něj (jednoduché zkratky jako F8 fungují) a řekne proč.
+- **Podpis:** jediné opravdové řešení pro Smart App Control je podepsaná
+  appka (instalátor, appka i pluginy instalátoru). Azure Artifact Signing
+  (dřív Trusted Signing) je zatím pro jednotlivce jen v USA a Kanadě; od
+  0.10.1 workflow podepisuje certifikátem Certum Open Source (SimplySign),
+  viz Novinky 0.10.1 a JAK-VYDAT.md, část C.
+
+## Novinky 0.10.0
+
+- **Přehlednější nastavení:** záložka Záznam má nahoře sedm ikon (Zkratky,
+  Kvalita, Zvuk, Výkon, Úložiště, Vzhled, Obecné) a ukazuje vždy jen jeden
+  oddíl. U voleb jsou krátké popisky a ikony; vysvětlení se ukáže až po
+  kliknutí na otazníček. Tečka na ikoně oddílu = tam je něco k vyřešení
+  (zvuk je ticho, zkratka nejde…). Upozornění v panelu vedou rovnou na
+  správný oddíl (`settings:audio` apod.).
+- **Ikony místo emoji** v celém okně (postranní panel, karty klipů,
+  přehrávač, Živě, okno po hře, nastavení nahrání) - jedna sada SVG ikon
+  (`src/renderer/icons.ts`), na Windows vypadají stejně jako všude.
+  Na kartě klipu jsou vedlejší akce (složka, přejmenovat, smazat, odkaz,
+  Discord) jen ikonkami s popiskem v bublině.
+- **Zmenšování klipů** (Klipy -> úložiště vpravo nahoře, nebo Úložiště ->
+  Zmenšit klipy): klipy se na pozadí překódují menším datovým tokem
+  (libx264; Jemně / Doporučeno do 1080p / Nejmenší 720p) s odhadem, kolik
+  to ušetří. Když jde ušetřit hodně, údaj o místě se zbarví - nic
+  nevyskakuje. Běží s nejnižší prioritou na polovině jader; když se zapne
+  hra, nahrávání nebo vysílání, rozdělaný klip se odloží a pokračuje se po
+  hře. Původní soubor se nahradí, až je zmenšený v pořádku (stejná délka,
+  má obraz, je opravdu menší); klip otevřený v přehrávači nebo změněný
+  mezitím se nechá. Výpadek uprostřed výměny opraví další start appky
+  (`.kine-orig` zpátky). `src/shared/compress.ts`, `src/main/compress.ts`.
+- **Snímek obrazovky odstraněn** (Windows to umí samo: Win+Shift+S).
+- **Přehrávač přes celou obrazovku:** tlačítko v hlavičce přehrávače
+  (i F a dvojklik), šipky ← → přepínají klipy i přes celou obrazovku; když
+  okno celou obrazovku odmítne, přehrávač vyplní okno roztažené přes
+  obrazovku.
+- **Ikona na ploše:** appka ji po instalaci i po každé aktualizaci vytvoří
+  znovu, když chybí (Nastavení -> Obecné -> Ikona na ploše; vypnutím se
+  smaže). Instalátor ji vytváří vždycky (`createDesktopShortcut: always`).
+- **Plynulejší světlo kolem přehrávače:** barvy z videa se přelévají
+  (desetkrát za sekundu, s prolínáním), neskáčou.
+
+## Novinky 0.10.1
+
+- **Podpis celé appky (Inteligentní řízení aplikací / Smart App Control):**
+  Windows 11 s ním pustí jen podepsaný kód, nepodepsaný instalátor zablokuje
+  celý. Workflow Vydání teď umí podepisovat certifikátem **Certum Open Source
+  (SimplySign v cloudu)** – stačí tajemství `CERTUM_USERNAME` a `CERTUM_TOTP`
+  (celý odkaz `otpauth://…` z QR kódu při aktivaci). `scripts/podpis.mjs
+  priprav` nainstaluje SimplySign Desktop (ověří podpis jeho instalátoru),
+  přihlásí se jednorázovým kódem (TOTP, SHA-256 – `scripts/podpisCore.mjs`),
+  najde certifikát v úložišti Windows a podepíše kopie pluginů NSIS
+  (`ELECTRON_BUILDER_NSIS_DIR` / `ELECTRON_BUILDER_NSIS_RESOURCES_DIR` – instalátor
+  je rozbaluje do %TEMP% a načítá); electron-builder pak podepíše Kine.exe,
+  **všechny .dll a .node** (`signExts`), ffmpeg.exe, elevate.exe,
+  odinstalátor i instalátor (`scripts/publish-config.mjs`). `podpis.mjs over`
+  po sestavení zkontroluje každý spustitelný soubor včetně toho, co je
+  uvnitř instalátoru (7-Zip), a nepodepsané vydání zastaví. Bez tajemství se
+  vydává jako dřív. Azure Artifact Signing zůstává (podepíše i pluginy).
+  Zkouška naostro na Linuxu (skutečné Electron pro Windows + NSIS, testovací
+  certifikát, `osslsigncode verify`): 18 z 18 souborů podepsaných, instalátor
+  pod wine instaluje.
+- **Pomocník jako program:** `src/helper/KineHelper.cs` → `kine-helper.exe`
+  (csc.exe z .NET Frameworku, který je v každých Windows) dělá totéž co
+  PowerShell skript a mluví stejně (řádky JSON). Při Inteligentním řízení
+  aplikací PowerShell jede v omezeném režimu a skript nejde – podepsaný
+  program projde. Přibalí se jen v podepsaném sestavení (nepodepsaný by
+  blokoval stejně); appka ho pak použije, a když se dvakrát nerozjede, vrátí
+  se k PowerShellu. Sám skončí, když appka zavře stdin (nezůstane viset po
+  pádu appky). Testy: `tests/helper.test.mjs` (logika přes mono / csc),
+  ve Vydání ho `podpis.mjs priprav` vždycky přeloží a pustí naostro.
+- Česky se Smart App Control v textech jmenuje jako ve Windows –
+  **Inteligentní řízení aplikací**.
+- **Smazání klipu bez potvrzování:** ikonka koše dá klip hned do koše
+  a dole se ukáže lišta „Přesunuto do koše · Vrátit“ (8 s, i **Ctrl+Z** –
+  podle písmene, takže funguje i na české klávesnici QWERTZ); dřív se
+  v kartě rozbalovalo dlouhé „Přesunout do koše?…“, které z karty
+  přetékalo. Stejně hromadné smazání vybraných klipů. Co se smaže, dokud
+  lišta svítí, vrátí Vrátit všechno. Karta zmizí hned a druhé kliknutí
+  dvojkliku se nepočítá (na stejném místě už je další klip); do koše jde
+  zvláštní požadavek `clips:trash`, který klip už v koši nechá být – dřív by
+  ho druhé „smazat“ smazalo nadobro. Smazat nadobro a Vysypat koš (z koše)
+  se dál potvrzují (dvojklik nepotvrdí), jen kratším textem. Klip vrácený
+  z koše, který Kine ještě zpracovává, se zase dočká „Klip je na Kine“.
+- **Přehrávač: jedno tlačítko celé obrazovky.** Mimo celou obrazovku jen
+  „Celá obrazovka“ v hlavičce; tlačítko ve videu je až v celé obrazovce
+  (jak z ní ven). Šipky na předchozí / další klip beze změny.
+- **Náhled přenosu** (Živě -> O přenosu): vlastní obrázek, který lidé uvidí
+  na Kine v řadě Živě a v náhledu odkazu; appka ho ořízne na 16:9
+  (1280×720 JPEG) a pošle na Kine (`/api/live/thumbnail`). Bez něj snímek
+  z vysílání jako dřív. Jde měnit i během vysílání. Adresu náhledu od Kine
+  appka bere jen https.
+- **Vzhled:** velikost písma, rohy (hranaté / normální / kulaté), velikost
+  karet klipů a klidný režim bez animací (Záznam -> Vzhled).
+- **Rychlejší nahrávání dlouhých videí:** velikost kusu se přizpůsobuje
+  rychlosti připojení (8–64 MiB, cíl ~8 s na kus - Cloudflare doporučuje
+  kolem 50 MB); na rychlém připojení (i optice, kde kus trvá pod půl
+  vteřiny) výrazně méně čekání na potvrzení kusů. Kusy se z disku čtou
+  asynchronně, ať velký kus nezastaví okna appky. Po nahrání karta
+  ukazuje, kolik procent má Cloudflare zpracováno.
+
+## Novinky 0.10.2
+
+- **Zvuk hry i u headsetů s vlastním programem (Logitech G HUB, Razer
+  Synapse…), Oculus / Meta Quest, Steam Streaming - jako v OBS.** Chromium
+  otevírá zvuk výchozího výstupu ve stereu a virtuální zařízení 7.1 to
+  odmítnou („Could not start audio source"), takže klipy byly bez zvuku hry.
+  Když se to stane, appka teď sama pustí pomocníka
+  (`src/helper/KineLoopback.cs`, přeloží ho PowerShell přes Add-Type -
+  C# 5), který zařízení otevře jako OBS: WASAPI loopback v jeho vlastním
+  formátu (mix format), převede ho na stereo (střed a zadní kanály do stran,
+  LFE pryč, jako Web Audio) a posílá binárně (`KLB1` + zprávy F / A / E).
+  Hlavní proces ho čte (`src/main/audioLoopback.ts`) a předává snímací
+  stránce, kde z něj Web Audio (bez výstupu do reproduktorů) udělá stopu
+  místo té z Chromia - nahrávání, klipy, měřáky i vysílání jedou beze změny.
+  Zpoždění proti obrazu je stálé (náskok 60 ms + čtení) a klip ho při stavbě
+  srovná (`systemLatencyMs` → `clipMuxArgs`). Rozdíl hodin zvukovky a Web
+  Audio vyrovná nepatrná změna rychlosti (±0,3 %). Pořadí záchrany: znovu
+  přes Chromium → pomocník → Stereo Mix a spol. → bez zvuku hry (a proč).
+  Hráč nic nenastavuje; v Nastavení → Záznam → Zvuk je vidět, že zvuk jde
+  „přímo z Windows (jako v OBS)". Přepnutí výchozího výstupu (reproduktory
+  ↔ sluchátka) pomocník pozná do vteřiny a jde za ním, odpojení zařízení
+  přečká (čeká, až zase bude). Když pomocník spadne, rozjede se znovu
+  (nejvýš 3× za minutu). Při Inteligentním řízení aplikací PowerShell
+  nejde (omezený režim) - pak zbývá Stereo Mix.
+  Testy: `tests/loopback.test.mjs` (protokol, převod formátů 7.1 / 5.1 /
+  16 / 24 / 32 bit přes mono `mcs -langversion:5`, celý skript v PowerShellu),
+  e2e `KINE_TEST_FAKE_LOOPBACK=1` (falešný pomocník s tónem 440 Hz ze
+  „zařízení 7.1": hladina, poznámka v nastavení, tón v klipu).
+- **Ikona celé obrazovky vpravo dole v přehrávači** (jako u videí na Kine)
+  místo tlačítka v hlavičce - ve vestavěném ovládání videa, dovnitř i ven
+  (v celé obrazovce ukazuje „zmenšit"). Tlačítko ve videu by dalo přes celou
+  obrazovku jen holé video a kliknutí si „vezme" - scénu se šipkami na další
+  klip pak zapne hlavní proces jako kliknutím (`player:stageFullscreen`,
+  `executeJavaScript` s gestem) a video se z vrstvy celé obrazovky vyjme
+  (vyndá a hned vrátí - hraje dál). Okno při tom z celé obrazovky nevyskočí.
+  Dvojklik do videa a F fungují dál; skryté jsou stahování, rychlost, obraz
+  v obraze a přenos do TV (jinak by v rohu byla nabídka ⋮ místo ikony).
+
+## Novinky 0.10.3
+
+- **Záznam vysílání jen na přání.** Karta skončeného vysílání (záložka
+  Živě) má vedle „Nahrát na Kine" i **Stáhnout do PC** a **Zahodit**.
+  Stáhnout: Kine nechá u Cloudflare vyrobit MP4 (`/api/live/recordings`,
+  `/api/live/recordings/download` - u dlouhého vysílání pár minut, karta ukazuje
+  procenta), appka ho stáhne do složky s klipy (napřed do `.part`, pak
+  přejmenuje) a přidá do knihovny jako nahrávku s náhledem - jde přehrát,
+  zkrátit i nahrát jako každý klip (`LiveController.downloadRecording`,
+  `saveStreamRecording` v `main.ts` - stahuje přes `pipeline`, takže plný
+  disk nebo zamčený soubor skončí chybou na kartě, ne zaseknutím; `.part`
+  se smaže). Zahodit: po potvrzení se záznam u Cloudflare hned smaže
+  (`/api/live/recordings/discard`) a nikde se neuloží. Karta míří vždy na
+  záznam PRÁVĚ skončeného vysílání - Kine pošle jeho id v odpovědi na
+  „skončil jsem" (`recordingUid`), ne „nejnovější" (mezitím mohlo začít
+  vysílání z OBS). Stáhnout / Zahodit mají vlastní adresy: starší web na ně
+  odpoví 404 a nic neudělá (na `/api/live/recordings` by záznam zveřejnil).
+  Když hráč neudělá nic, nezveřejněný záznam se nikde neukazuje a Cloudflare
+  ho po 30 dnech smaže sám (jako dřív).
+- **Vlastní doména s přesměrováním.** Když Kine hlásí novou adresu
+  (`/api/desktop/config`) a ta přesměruje (holá doména → www), appka
+  přejde rovnou tam, kde web opravdu odpovídá (`checkSiteMove` čte
+  konečnou adresu odpovědi) - jinak by okno Kine bralo každý odkaz jako
+  cizí web a API by chodilo přes přesměrování, které zahodí přihlášení.
+  Appka na www zůstane (zpátky na holou doménu nikdy) a appka na holé doméně
+  (přesměrovává) přejde na www. `playkine.com` a `www.playkine.com` jsou
+  pro okno Kine totéž (`isKineUrl`).
+
+## Novinky 0.10.4
+
+- **Klipy samy z Rocket League** (`gameEventsParse.ts` - `JsonStreamFramer`,
+  `rlDecode`, `rlEvents`, `RlMoments`, `rlConfigEnable`; `gameEvents.ts`):
+  oficiální **Stats API** Psyonixu (rocketleague.com/developer/stats-api),
+  bez zásahu do hry. Appka v instalaci hry (Steam `steamapps/common/rocketleague`,
+  Epic podle manifestů launcheru v `ProgramData\Epic\EpicGamesLauncher\Data\Manifests`)
+  zapne v `TAGame/Config` (TAStatsAPI.ini, jinak DefaultStatsAPI.ini) oddíl
+  `[TAGame.MatchStatsExporter_TA]`: `PacketSendRate=5` jen když je vypnutý
+  (0) - nad řádek si dá značku s původní hodnotou a vypnutí klipů ze hry ji
+  vrátí; zapnutý jiným programem (overlay) nechá být a převezme jeho `Port`.
+  Hra konfiguraci čte při startu. Když `rocketleague.exe` běží, appka se
+  připojí na `127.0.0.1:<Port>` (TCP, v základu 49123; Stats API posílá jen
+  během zápasu - spojení se zkouší znovu po 3 s). Proud jsou objekty JSON za
+  sebou bez oddělovače (rámování podle závorek s ohledem na texty v uvozovkách),
+  `Data` je znovu zakódovaný JSON. **Kdo jsem já:** API hráče neoznačuje -
+  `Game.Target` je ten, koho kamera sleduje (při hraní vlastní auto); hlasuje
+  se přes zápas mimo opakované záběry, platí od 10 hlasů s většinou 60 %
+  (divák přepínající hráče žádné „já" nemá → žádné klipy). Klipy: můj **gól**
+  (`GoalScored.Scorer`), třetí gól = **hattrick**, **skvělý zákrok**
+  (`StatfeedEvent` EpicSave), s volbou „Každé zabití" i **zákrok** (Save)
+  a **demolice** (Demolish, MainTarget = já). Momenty těsně za sebou = jeden
+  klip s nejdůležitějším názvem, 3 s po posledním (výbuch po gólu je v klipu).
+  Název nese skóre z pohledu hráče: „Gól · 2:1". Konfigurace se čte i zapisuje
+  ve svém kódování (`decodeIni` / `encodeIni`: UTF-8 i UTF-16, s BOM i bez).
+  Když složku hry nejde zapsat (chráněná instalace), appka to ukáže
+  v záložce Hry (`autoClipsRlNoAccess`). Testy: `tests/gameEvents.test.mjs`
+  (rámování proudu rozsekaného kdekoli, „já", jen moje momenty, hattrick,
+  skóre, režimy, spojování, zapnutí a vrácení konfigurace, kódování), e2e:
+  falešný server Stats API (cizí gól nic, můj gól = jeden klip „Goal · 1:1")
+  a falešná instalace z Epicu s konfigurací v UTF-16 (zapnutí a přesné vrácení).
+
+## Novinky 0.10.5
+
+- **Vidí diváci obraz?** (`liveHealth.ts`, `live.ts`): appka během vysílání čte
+  HLS playlist vysílání u Cloudflare (adresu `stream.hlsUrl` dá Kine v
+  `/api/live/me`) - jen playlist, žádné video, každých 5 s - a hlídá, že
+  přibývají nové kousky. V záložce Živě: „Diváci tě vidí" / „Ověřuji…" /
+  „Diváci vidí zamrzlý obraz". Playlist je, ale nepřibývá (minutu od startu,
+  nebo 25 s po posledním kousku) = zamrzlý obraz -> **kompatibilní režim**:
+  nové spojení (Cloudflare přenos minutu drží, diváci zůstávají), ve kterém
+  ffmpeg obraz zakóduje znovu (`livePlan.ts`: x264 veryfast/zerolatency,
+  `-r` pevné snímky, klíčový snímek přesně každé 2 s, CBR, bez B-snímků).
+  Když pomůže, zapamatuje se (`liveCompat` v nastavení; jde i ručně: Živě ->
+  Jak vysílat). Playlist nejde přečíst vůbec: s potvrzením od Kine „nejde
+  ověřit" (nic se nepřepíná), bez potvrzení po 90 s zamrzlý obraz.
+- **Zahodit záznam** vždycky smaže: id záznamu appka zná už z „pořád
+  vysílám" (Kine ho posílá s potvrzením od Cloudflare); bez id pošle okno
+  vysílání (`since`-`until` + `clientNow` = hodiny počítače, server si okno
+  posune na svůj čas) a Kine smaže záznamy z něj. Záznam, který
+  Cloudflare ještě zakládá / uzavírá (odpověď `retry`), zkouší znovu po 10 s
+  až 3 minuty („Mažu záznam…"); id, které u vstupu není, -> okno vysílání.
+- **„Skončil jsem"** se při chybě sítě pošle znovu (3 pokusy), ať Kine po
+  konci neukazuje vysílání jako živé.
+- **Placení na Kine zatím neběží**: místo odkazu na Kine Plus štítek
+  „Připravujeme" (`plusAvailable` od Kine je false).
+- Testy: `tests/live.test.mjs` (kompatibilní režim, playlisty HLS, verdikt
+  hlídání, přepnutí při zamrzlém obrazu a zapamatování, Zahodit podle okna
+  a opakování, id nesedí -> okno, zveřejněný záznam = chyba),
+  `tests/uploader.test.mjs` (co appka posílá při Zahodit), e2e: vysílání
+  v kompatibilním režimu na místní RTMP server (klíčové snímky přesně po 2 s,
+  30 snímků za sekundu, zvuk).
+
+## Novinky 0.10.6
+
+- **Na Kine živě?** (`live.ts`, `kineApi.ts`, `settings.ts`): Kine teď v odpovědi
+  na „začal jsem / pořád vysílám" posílá, jestli je přenos na Kine opravdu
+  živě (`live`) a co o vstupu řekl Cloudflare (`cloudflare`: lifecycle, běžící
+  záznam vstupu, HLS). Záložka Live ukazuje dva řádky: „Diváci tě vidí"
+  (appka si sama čte HLS) a „Na Kine jsi živě" / „Kine tě teď neukazuje" -
+  dřív bylo vidět jen to první a na webu přitom „nikdo nevysílá". Změny se
+  zapisují do deníku (O appce -> Kopírovat diagnostiku).
+- Server Kine (stejné kolo) přenos potvrzuje i podle seznamu videí vstupu
+  a HLS vstupu, a „pořád vysílám" vrátí přenos, který Kine stáhla, jakmile
+  ho Cloudflare vidí.
+- Testy: `tests/live.test.mjs` (stav „na Kine", zápis do deníku jen při
+  změně, starší Kine bez `live`), e2e: oba řádky v záložce Live.
+
+## Novinky 0.10.7
+
+- **Zvuk hry a mikrofon v přehrávači** (`renderer/player.ts`): vpravo dole
+  nad ovládáním videa (i přes celou obrazovku) jsou u klipů se samostatnými
+  stopami tlačítka „Hra" a „Mikrofon" - kliknutím se ztlumí / zapnou hned
+  v tom, co hraje (dřív šel zvuk vybrat jen v úpravách a v náhledu se nic
+  neztlumilo). Úpravy převezmou, co je slyšet, a stejně klip uloží. Stopy
+  přepíná Chromium (`enableBlinkFeatures: 'AudioVideoTracks'` u oken
+  s přehrávačem - `main.ts`); bez toho aspoň „bez zvuku". Po vypnutí všech
+  stop pustí Chromium tutéž stopu znovu až za 1-2 s (změřeno) - přehrávač
+  proto po zapnutí skočí na stejné místo a zvuk je hned zpátky.
+- Klipy s jednou stopou: „Odstranit zvuk" v úpravách ztlumí i náhled; po zavření
+  úprav hraje náhled zase se zvukem (mimo úpravy tu volbu nic neukazuje).
+- **Rychlost přehrávání**: tlačítko „1×" vedle (0,25× až 2×), i přes celou
+  obrazovku, klávesy `<` a `>`; výchozí 1×, zůstává i pro další klipy.
+  V úpravách náhled hraje rychlostí, se kterou se klip uloží.
+- **Živě**: když kontrola obsahu přenos skryje z Živě, záložka Live to řekne
+  (dřív „Na Kine jsi živě", i když ho ostatní neviděli).
+- Testy: e2e `playerTracksOk` (klip se třemi stopami 440 / 1000 Hz - měří se,
+  co video opravdu hraje), `playerSpeedOk`, `playerMuteOk` (klip s jednou
+  stopou: „Odstranit zvuk" ztlumí náhled, po zavření úprav zase hraje); `tests/live.test.mjs`
+  a `tests/uploader.test.mjs` (skrytý přenos).
+
+## Novinky 0.10.8
+
+- **Vlastní ovládání přehrávače** (`renderer/player.ts`): místo vestavěného
+  ovládání Chromia lišta dole přes obraz - posuvník (načtené světleji,
+  momenty nahrávky žlutě, při najetí čas) a pod ním jedna řada: přehrát /
+  pozastavit, hlasitost (posuvník se vysune u reproduktoru), čas, vpravo
+  „Hra" a „Mikrofon" (jen klipy se samostatnými stopami), rychlost a celá
+  obrazovka. Všechno u posuvníku, nic dalšího na ploše videa; stejné i přes
+  celou obrazovku. Pryč je nabídka ⋮ se „zvukovou stopou" (Chromium ji
+  přidávalo ke klipům s víc stopami). Klik do obrazu přehraje / pozastaví,
+  dvojklik dá celou obrazovku. Při přehrávání se lišta po 2,5 s bez pohybu
+  myši schová (i kurzor), při pauze zůstává. Klávesy beze změny (mezerník / K,
+  šipky, M, F, < >).
+- **Nastavení přeuspořádané**: záložka Záznam má jen to, co se týká
+  nahrávání (zkratky, kvalita, zvuk, výkon, úložiště); vzhled, obecné
+  (jazyk, start s Windows, oznámení, co po spuštění) a O appce jsou v nové
+  záložce **Appka** (místo O appce v postranním panelu - počet položek
+  zůstal). Staré cíle (`about`, `settings:look`, `settings:general` -
+  upozornění, odkazy `kine://`) vedou na nové místo (`resolveTarget`).
+- Testy: e2e `playerControlsOk` (žádné vestavěné ovládání, lišta s posuvníkem
+  a jednou řadou tlačítek, přehrát / pozastavit, posun kliknutím, ztlumení),
+  `playerFullscreenOk` přes tlačítko v liště, `settingsSectionsOk` (Záznam
+  pět oddílů, Appka vzhled / obecné / o appce, staré cíle).
+
+## Novinky 0.14.0
+
+Co se nahrává je teď vidět a jde přepnout - monitor, nebo jen jedna aplikace (jako sdílení
+obrazovky na Discordu) - a vysílání má scény:
+
+- **Co se nahrává** (Záznam → Kvalita, nahoře): živý náhled toho, co jde do klipů (malý obrázek
+  dvakrát za sekundu, jen když je okno vidět), co se právě nahrává a tlačítko **Vybrat monitor
+  nebo aplikaci**. Okno výběru má záložky Obrazovky / Aplikace s náhledy (okna appky samotné
+  v něm nejsou). Monitor i aplikace se přepnou **bez nového startu snímání**: zvuk běží dál,
+  zásobník zůstává (pokračuje novou generací - klip hned po přepnutí na jiné rozměry začne až od
+  přepnutí, jako když hra změní rozlišení) a vysílání se nepřeruší. Dřív změna monitoru
+  zásobník smazala a vysílání na pár vteřin vypadlo.
+- **Aplikace, která není otevřená** (zavřela se, po restartu PC ještě neběží): nahrává se hlavní
+  monitor, appka to řekne a každých 5 s zkouší, jestli se aplikace otevřela - pak se na ni
+  přepne sama. Okno se po restartu aplikace najde podle názvu (u prohlížeče podle části za
+  poslední pomlčkou, "Stránka - Opera"). Zvuk se i u jedné aplikace nahrává z celého počítače.
+- **Scény vysílání** (záložka Živě, panel Co jde do vysílání - teď hned pod stavem vysílání):
+  tlačítka scén, živý náhled toho, co opravdu vidí diváci (během vysílání přímo z vysílání),
+  úprava scény (název; co ukazuje: hru / aplikaci, jen kameru, text na obrazovce; vlastní obraz
+  - jiný monitor nebo aplikace; kamera v rohu), přidat (až 8) / smazat. Výchozí scény: Hra,
+  Jen kamera, Začínáme za chvíli. Přepíná se kliknutím, zkratkou **Další scéna** nebo v liště
+  (Scéna ▸). Bez vysílání tlačítko vybere scénu, kterou vysílání začne. Scéna s vlastním obrazem
+  přepne snímání jen během vysílání, po konci se vrátí na to, co je v Záznamu. "Hned jsem zpět"
+  zůstává zvlášť nad každou scénou.
+- Vysílání drží rozměry proudu: obraz jiného zdroje se do nich vejde celý (černé pruhy po
+  stranách), vysílání, které začíná na aplikaci, má plátno 16:9 podle kvality. Obrazovka
+  s textem (scéna i "Hned jsem zpět") se pošle hned i když obraz stojí - dřív čekala na
+  pohyb ve hře.
+- Kód: `src/shared/scenes.ts` (čistá logika - zdroje, scény, hledání okna), `src/renderer/sourcePicker.ts`
+  (okno výběru, náhled), povel `source` a náhled v `src/renderer/capture.ts`, `setSource`
+  a scény v `src/renderer/liveCompositor.ts`, přepínání v `src/main/main.ts`
+  (`applyCaptureSource`) a `src/main/capture.ts` (`switchSource`). Náhled snímky ze snímání
+  nedrží (jen je hned zmenšeně překreslí) - držet je vyčerpá zásobu snímků a obraz se zastaví.
+- Testy: `tests/scenes.test.mjs`; samočinná zkouška se správcem oken (`KINE_TEST_WM=1 bash
+  tests/e2e.sh`, potřebuje openbox) nahrává cizí okno, přepíná scény za vysílání a hlídá, že
+  vysílání nevypadne (největší mezera mezi snímky při přepnutí 73 ms).
+
+## Novinky 0.13.6
+
+Oprava „sekání“ zvuku v klipech (hlášení: seká se všechno kromě VP8):
+
+- **Kousky zásobníku se skládají přesně**: délka každého dvousekundového kousku v klipu je
+  teď čas do začátku dalšího kousku. Dřív se brala délka ze seznamu ffmpeg (od prvního do
+  posledního snímku), která vychází o pár až desítky ms jinak - nejvíc u VP9 (až ~60 ms),
+  u H.264 ~10 ms, u VP8 skoro vůbec. Každý spoj tak posunul zbytek klipu: obraz na spoji
+  poskočil, zvuk dostal překryv a mikrofon (samostatný proud) se proti obrazu za 20 s
+  posunul až o desetiny sekundy. Když odstup nedává smysl (chybějící kousek, jiná
+  generace), bere se délka ze seznamu jako dřív (`pieceDuration` v `src/main/segments.ts`).
+- **Zvuk se při stavbě klipu nesrovnává po milisekundách**: časové značky zvuku z Chromia
+  kolísají o milisekundy až desítky ms (zvuk Windows chodí po kouscích, při zátěži později)
+  a ffmpeg (`aresample`) je srovnával už od 10 ms - vkládal ticho a ořezával zvuk mnohokrát
+  za sekundu. Týkalo se to klipů, kde se zvuk znovu kóduje: vždy H.264 (mp4 + AAC), u VP8
+  a VP9 s mikrofonem nebo změněnou hlasitostí. Srovnává se teď až od 100 ms - skutečné
+  mezery (výpadek zvuku, nová generace po klipu) se tichem doplní dál (`src/main/editPlan.ts`).
+- Ověřeno na stejné nahrávce s rozkolísanými značkami: dřív 276 skoků ve zvuku, teď 0.
+  Zkouška celé appky (zvuk hry přes pomocníka, klip 20 s): dřív 191 skoků a 40 krátkých
+  výpadků (zhruba každé 0,3 s), teď žádné pravidelné - zbylé jednotlivé jen ve chvílích,
+  kdy byl zkušební počítač přetížený.
+- Klipy uložené dřív zůstávají, jak jsou - oprava platí pro nové klipy.
+- Testy: nové případy v `tests/segments.test.mjs`, upravené `tests/editPlan.test.mjs`.
+
+## Novinky 0.13.5
+
+Bezpečnostní vydání (z bezpečnostní kontroly appky):
+
+- **Web Kine v appce má pravidla od startu**: záložka Kine i okno s chatem vysílání (relace
+  `persist:kine-web`) mají pravidla oprávnění nastavená hned při startu - dřív je dostala až
+  záložka Kine, takže v Kine Clipperu (záložku nemá) dostal chat od Electronu cokoli. Kamera
+  a mikrofon jen hlavní stránce Kine; oznámení, schránka a celá obrazovka jen Kine; všechno
+  ostatní (i otevírání jiných protokolů systémem) nikdo (`src/shared/webGuard.ts`).
+  Přesměrování serverem (`will-redirect`) hlídá stejné pravidlo jako odkazy, vložené rámce
+  (`will-frame-navigate`) smí jen na web. Oficiální adresy Kine se berou jako Kine.
+- **Klíč vysílání se neukáže**: chyby ffmpeg (adresa `rtmps://…/live/<klíč>`) v protokolu,
+  důvod pádu vysílání v okně i „Zkopírovat diagnostiku“ klíč skryjí (`src/shared/redact.ts`).
+- **index.json ve složce s klipy appka nebere naslepo** (složku může sdílet síť, cloud nebo
+  jiný účet na druhém disku): klip i kamera musí ležet ve složce s klipy, náhled tam nebo ve
+  složce s náhledy - jinak se záznam při načtení vynechá a nic se nemaže. Rozjeté nahrávání
+  naváže jen na adresu u Cloudflare. „Otevřít“ pustí jen video ze složky s klipy.
+- Kontroly cest (poslat na Discord, ukázat ve složce, mazání v koši) přes `path.relative`
+  a skutečnou cestu místo začátku textu; složku s klipy z okna mění jen dialog.
+- Zabalená appka nebere zkušební proměnné (`KINE_TEST`, `KINE_FFMPEG`, `KINE_USER_DATA`).
+- Linux bez klíčenky: přihlášení se nezapisuje nešifrovaně, drží se jen v paměti (po restartu
+  appky je potřeba se přihlásit znovu).
+- Vydání: `DESKTOP_DOWNLOAD_BASE` musí být https; joby Linux a macOS nenechávají token gitu
+  v `.git/config`. Kontrola podpisu aktualizací se po nastavení podpisu zapne jedním řádkem
+  (`VERIFY_UPDATE_SIGNATURE` v `scripts/publish-config.mjs`).
+- Testy: `tests/redact.test.mjs`, `tests/webGuard.test.mjs`, `tests/safePath.test.mjs`,
+  nové případy v `tests/clips.test.mjs` a `tests/publishConfig.test.mjs`.
+
+## Novinky 0.13.4
+
+- **Vysílání z jiného monitoru**: v záložce **Živě** (oddíl Jak se vysílá) je výběr
+  monitoru - dřív šlo vysílat jen hlavní obrazovku (výběr byl schovaný v nastavení
+  snímání). Je to stejné nastavení jako pro klipy (vysílání i klipy jdou z jednoho
+  snímání); změna během vysílání obraz na pár vteřin přeruší (snímání se rozjede
+  znovu, vysílání se samo znovu připojí). Seznam monitorů se obnoví při otevření
+  záložky Živě / Nastavení (monitor připojený až po spuštění appky).
+- **Výběr monitoru i bez display_id**: na některých Windows (dvě grafiky, notebook +
+  monitor) Electron u zdrojů obrazovky nevyplní `display_id` a snímal se vždy první -
+  teď se v tom případě vezme zdroj podle pořadí monitorů (`src/shared/displayPick.ts`,
+  hlavní proces i starší cesta snímání).
+- Testy: unit testy výběru monitoru (`tests/displayPick.test.mjs`).
+
+## Novinky 0.13.3
+
+- **Přihlášení jen přes prohlížeč**: e-mail a heslo přímo v appce jsou pryč. Web Kine
+  má ochranu proti botům (Cloudflare Turnstile, hlídá ji Supabase) - po jejím zapnutí by
+  přihlášení heslem v appce stejně nešlo. „Připojit přes prohlížeč“ otevře Kine
+  (`/connect`), hráč se tam přihlásí (heslo + ověření) a appka dostane vlastní relaci.
+  Appka tak heslo vůbec nevidí; v hlavním procesu už není ani obsluha `auth:loginPassword`.
+  Mobilní appka se přihlašuje stejně (beze změny).
+
+## Novinky 0.13.2
+
+- **macOS se zase staví**: univerzální (Intel + Apple Silicon v jednom) sestavení padalo -
+  `ffmpeg-static` má v `node_modules` jen binárku pro procesor runneru (Apple Silicon) a
+  `@electron/universal` ji neumí spojit; Intel Mac by navíc dostal špatnou. Teď se staví
+  **zvlášť x64 a arm64** (`Kine-Mac-x64.dmg`, `Kine-Mac-arm64.dmg`, zip pro aktualizace,
+  jeden `latest-mac.yml`), workflow stáhne ffmpeg pro obě architektury z vydání balíčku
+  `ffmpeg-static` do `build/ffmpeg/darwin-<arch>` a electron-builder ho přibalí podle
+  architektury (`extraResources`, `src/main/ffmpeg.ts` ho na macOS bere z `resources/ffmpeg`);
+  krok „Kontrola souborů“ ověří architekturu binárky v každé appce. Appka při kontrole
+  verze posílá `mac` / `mac-intel` (web `/api/desktop/latest` -> `downloads`).
+- **Pojistky Electronu (fuses)** v zabalené appce (`electron-builder.yml`): appku nejde
+  spustit jako holý Node (`ELECTRON_RUN_AS_NODE`), nejde do ní připojit ladicí program
+  (`--inspect`), nečte `NODE_OPTIONS`, kód se bere jen z `app.asar` a jeho neporušenost se
+  při startu kontroluje (Windows, macOS); cookies vloženého webu Kine šifrované klíčem
+  systému. Testy a vývoj (`electron .`) běží dál bez pojistek.
+- **Plynulejší okno**: průběh nahrávání (každý kus tus) a zpracování u Cloudflare se do
+  seznamu klipů zapisuje a oknu hlásí nejvýš jednou za 600 ms (`Library.setUpload`), a
+  okno při něm vymění jen dotčené karty (`patchClipCards`) místo překreslení všeho -
+  u stovky klipů to trhalo, hlavně s otevřeným přehrávačem. Průběh stahování aktualizace
+  překresluje nejvýš dvakrát za sekundu. Karty klipů mimo obrazovku se nekreslí
+  (`content-visibility: auto`).
+
+## Novinky 0.13.1
+
+- **Přehrávač a úpravy (podle hlášení z Kine Clipperu)**: hlavička přehrávače je
+  vždycky jeden řádek - tlačítka se nelámou do dvou řádků (`white-space: nowrap`,
+  zkracuje se název), v užším okně zůstanou u „Otevřít v přehrávači systému“ a
+  dalších jen ikony (`.lbl` + media queries). Scéna s videem se už nesmrskne
+  (`flex: none`): dřív se při dlouhém panelu úprav stlačila na 200 px, video z ní
+  přečuhovalo přes hlavičku i přes časovou osu a ovládání „plavalo“ uprostřed
+  obrazu. V úpravách je ovládání (přehrát, hlasitost, čas, zvuk hry / mikrofon,
+  celá obrazovka) **pod videem**, ne přes obraz, a bez vlastního posuvníku -
+  časová osa je jen jedna, ta s úchyty (klik / tažení po ní = posun přehrávání);
+  přes celou obrazovku zůstává běžné ovládání přes obraz. Video je v úpravách
+  nižší na malém okně (`clamp(220px, 100vh - 520px, 50vh)`).
+- **Kolečko myši v úpravách**: panel úprav (`.trim`) roluje sám (`overflow-y:
+  auto`), nahoru i dolů; okno přehrávače má `overflow: clip`, takže ho zaostření
+  pole (hledání GIFů, text překryvu) už neposune a člověk nezůstane „zamčený dole“
+  bez možnosti vyrolovat zpátky.
+- Testy: e2e `editLayoutOk` (hlavička do 60 px a vidět, video celé ve scéně,
+  ovládání pod videem, posuvník schovaný, osa pod ovládáním, okno neodrolované)
+  a `trimWheelOk` (skutečné kolečko myši nad panelem: dolů i zpátky nahoru, okno
+  samo stojí).
+
+## Novinky 0.13.0
+
+- **Linux a macOS**: `release.yml` staví vedle Windows i Linux (AppImage +
+  deb, `Kine-Linux.*`, `Kine-Clipper-Linux.*`) a macOS (dmg + zip,
+  univerzální pro Intel i Apple Silicon, `Kine-Mac.*`) pro obě appky a nahrává
+  je do stejného vydání na GitHubu i do R2 (`full/`, `clipper/`). Web nabízí
+  stažení podle systému (`/download` s přepínačem, `/download/mac`,
+  `/download/linux[?format=deb]`, `/api/desktop/latest` -> `downloads`).
+  macOS je bez podpisu Apple (Developer účet zatím není): první otevření přes
+  Nastavení systému -> Soukromí a zabezpečení -> Přesto otevřít; appka po
+  startu hlídá povolení Záznam obrazovky (`checkMacPermissions`) a odkáže do
+  nastavení systému. Aktualizace: Linux AppImage přes electron-updater
+  (`latest-linux.yml`), deb a macOS jen ručně - appka hledá novou verzi na
+  webu Kine a nabídne stažení (`manualOnly` v `updater.ts`).
+- **Zvuk hry mimo Windows**: Linux ze vstupu „Monitor of …“ (PipeWire /
+  PulseAudio), macOS z virtuálního zařízení (BlackHole, Soundflower, Loopback) -
+  `loopbackInputTrack` v `renderer/capture.ts`; bez něj nastavení řekne, co
+  zapnout (`audioNoLoopbackLinux` / `audioNoLoopbackMac`). Linux s Waylandem
+  snímá přes PipeWire (`WebRTCPipeWireCapturer`), spouštění se systémem přes
+  `~/.config/autostart/kine-<varianta>.desktop`, poznání hry z celé příkazové
+  řádky (`parsePsLinux` - `comm` zkracuje na 15 znaků, hry přes Proton / Wine
+  jako `*.exe`).
+- **GIFy z Kine v překryvech**: tlačítko GIF v úpravách hledá GIFy přes Kine
+  (`/api/gifs/search` - Giphy přes server, jen pro přihlášené, „Powered by
+  GIPHY“), vybraný se stáhne do `userData/overlays` (jen z giphy.com, do
+  15 MB, nechává se posledních 40) a položí do klipu jako překryv; vlastní
+  soubor zůstává. Od kdy do kdy je překryv vidět (od - do) je v editoru od
+  0.12.0.
+- Kopie k nahrání s kamerou zvlášť se překódovává s nižší prioritou (`low`).
+- Mobil: Kine Clipper pro Android je vlastní repo `kine-mobile` (web zná
+  hlavičku `X-Kine-App: android/<verze>` a `/connect?app=mobile`).
+
+## Novinky 0.12.0
+
+- **Překryvy v úpravách klipu**: text, vlastní obrázek (PNG / JPG / WebP / BMP)
+  nebo GIF kamkoli do obrazu - až 8 najednou; tažením se posouvají, rohem
+  zvětšují, každý může být vidět celou dobu nebo jen od - do. Text se kreslí
+  v okně (písmo Inter, styly) do PNG, obrázky a GIFy pokládá ffmpeg
+  (`main/editPlan.ts` - `overlayFilter`, GIF ve smyčce `-stream_loop -1`,
+  obrázek `-loop 1`, polohy jako podíly výsledného obrazu, takže sedí i u
+  výřezu na výšku). Obrázek jde jen z dialogu appky (ne libovolná cesta
+  z okna), nejvýš 60 MB. Panel úprav je přeskládaný do rámečků Výstup
+  (formát, výřez, rychlost) a Překryvy.
+- **Kamera v klipech podle sebe**: velikost posuvníkem 8-60 % šířky
+  (`clipCameraScale`), kamera se v náhledu nastavení dá přetáhnout kamkoli
+  (`clipCameraX` / `clipCameraY`; „Zpátky do rohu" vrátí roh). Stejná čísla
+  bere nahrávání (`shared/liveLayout.ts` - `cameraRect` s vlastní šířkou a
+  polohou), náhled, přehrávač i zapečení.
+- **Kamera zvlášť** (Záznam -> Kamera -> „Nahrávat kameru zvlášť"): místo
+  skládání do obrazu se kamera nahrává třetím recorderem (jen obraz, VP9/VP8)
+  do vlastních kousků (`c%05d.mkv`, `cam.csv`) a při uložení klipu se slepí
+  bez překódování do `<klip>.camera.webm` vedle klipu (`CaptureBuffer.muxCamera`
+  - stejné zarovnání podle hodin jako mikrofon, `planClip`; událost
+  `camera-started` říká, od kdy kamera jede, když naběhla později než obraz).
+  Klip má v knihovně `camera` (soubor, offset, poloha, šířka, tvar, zrcadlo).
+  V přehrávači je kamera druhé video přes obraz (`player-cam`), hraje v rytmu
+  s klipem (čas, rychlost, hraje / stojí), tažením se posouvá a rohem zvětšuje
+  KDYKOLI - i u klipů z minulého týdne; poloha se uloží ke klipu
+  (`clips:setCamera`). Do obrazu se kamera zapéká až tam, kde musí být jeden
+  soubor: kopie k nahrání na Kine, Discord, sestřih, GIF (`bakedFileFor` -
+  překódování, kopie v `upload-cache` platí do další změny) a úprava klipu
+  (nový i přepsaný klip má kameru v obraze a soubor kamery už ne). Filtr
+  `cameraChain`: čas (offset, začátek výběru, rychlost), zrcadlo, výřez pro
+  kruh, velikost, tvar maskou z jednoho snímku (`color` + `geq` + `loop` +
+  `alphamerge` - výraz se počítá jednou, ne pro každý snímek). Koš bere
+  soubor kamery s klipem (a zpátky). Vypnuto (výchozí) = kamera v obraze hned
+  jako dřív.
+- **Aktualizace samy** (Obecné -> „Aktualizace samy", výchozí zapnuto):
+  stažená novější verze se nainstaluje sama nejpozději 14 dní od chvíle, kdy
+  ji appka poprvé viděla (`update-seen.json`, `autoInstallDue`), a to jen v
+  klidné chvíli - bez hry, nahrávání, vysílání, ukládání a bez otevřeného
+  nastavení; kontrola každou půlhodinu a po konci hry. Když Kine verzi odmítne
+  (426, zastaralá), instaluje se hned, jakmile je stažená. Instalace je ta
+  samá viditelná jako dřív (okno instalátoru, appka se pak spustí znovu) -
+  žádná tichá při vypínání (ta jednou appku smazala). Vypnuto = jen upozornění
+  jako dřív.
+- **Vydání**: zabalená appka se staví zmenšená (esbuild `minify` +
+  `keepNames`, `KINE_RELEASE=1` v `release.yml`) - menší instalátor a kód
+  bez komentářů; starší vydání na GitHubu se po nahrání nového smažou (ke
+  stažení je jen poslední; značky zůstávají). Co kdo smí (Klipy Plus, reklamy,
+  limity) rozhoduje Kine na serveru a nejstarší povolenou verzi hlídá
+  `minDesktopVersion` - to je skutečná pojistka, zmenšení kódu jen ztěžuje
+  čtení.
+- Testy: `tests/editPlan.test.mjs` (překryvy a kamera - argumenty i opravdový
+  ffmpeg), `tests/liveLayout.test.mjs` (vlastní šířka a poloha),
+  `tests/clips.test.mjs` (koš se souborem kamery), `tests/settings.test.mjs`,
+  `tests/updater.test.mjs` (14 dní, soubor „viděno"); e2e `clipCameraSeparateOk`
+  (kamera v souboru vedle klipu, zapečení vpravo dole / po přesunu vlevo
+  nahoře, úprava, přehrávač s tažením, koš) a `overlayUiOk`.
+
+## Novinky 0.11.1
+
+- **Zrušit / Znovu u nahrávání** (karta klipu, hlavička přehrávače): rozjeté,
+  čekající i pozastavené nahrávání jde zrušit (`Uploader.cancel` - klip
+  zůstane nenahraný, nic se nenavazuje) a zaseknuté zkusit znovu od začátku
+  (`Uploader.restart` - jede hned, i během hraní, se stejným nastavením).
+  Zrušené i nepovedené nahrávání appka řekne Kine (`/api/videos/cancel-upload`),
+  takže tam přestane držet místo mezi rozpracovanými; dřív jeden nepovedený
+  pokus blokoval další nahrávání až do vypršení lístku (24 h).
+- **Dva pruhy nahrávání**: klipy (do 5 minut) a dlouhá videa / nahrávky
+  zápasů (`uploadLane`). V každém jede jedno nahrávání po druhém, ale klip už
+  nikdy nečeká, až se dohraje hodinová nahrávka.
+- Čekání na Kine při přípravě a uložení nahrávání má strop 60 s (dřív mohl
+  zaseknutý dotaz zastavit celou frontu) a jde ho přerušit (hra, Zrušit).
+- Testy: `tests/uploader.test.mjs` (pruhy, Zrušit rozjeté / čekající /
+  pozastavené, Zkusit znovu, uvolnění nepovedeného pokusu).
+
+## Novinky 0.11.0
+
+- **Verze appky v každém dotazu na Kine** (`X-Kine-App: clipper/0.11.0` -
+  `shared/kineClient.ts`): Kine pozná zastaralou appku a nepustí ji nahrávat
+  ani vysílat (odpoví 426). Appka pak ukáže upozornění „aktualizuj" (O appce)
+  a hned hledá aktualizaci. Nejstarší povolenou verzi hlásí i
+  `/api/desktop/config` (`minDesktopVersion`). Starší verze hlavičku neposílají
+  a Kine je pozná podle toho, že volají z Node.js - po vydání 0.11.0 musí
+  aktualizovat.
+- **Jen oficiální Kine**: zabalená appka mluví jen s www.playkine.com (a
+  starší kine-lac.vercel.app); jiná adresa v nastavení se vrátí. Vývoj
+  (nezabalená appka) a testy můžou cokoli. Předplatné tak nejde „zapnout"
+  vlastním falešným webem.
+- **Klipy Plus hlídá i appka**: konec předplatného (`planUntil`) - po něm se
+  hned vrátí 60s klipy a ruční nahrávání, i bez spojení s Kine; strop délky
+  klipu od serveru nejvýš 5 minut, bez Plus vždy 60 s. Předplatné se ověřuje
+  každou hodinu (dřív 6 h).
+- **Přihlášení po výpadku**: když Kine / Supabase při startu neodpovídá, appka
+  hráče neodhlásí (relace je na disku) a přihlášení obnoví, jakmile Kine
+  odpoví - dřív se tvářil jako odhlášený až do restartu appky.
+- **Délka klipu do nahrání**: Kine podle ní hlídá limity nahrávání a u
+  Cloudflare rezervuje jen tolik místa, kolik klip opravdu má.
+- Nezveřejněné záznamy vysílání Kine maže po pár dnech (texty v appce).
+- Testy: `tests/kineClient.test.mjs` (hlavička, oficiální adresy, verze,
+  426 -> upozornění, délka klipu, konec Klipy Plus).
+
+## Novinky 0.10.9
+
+- **Kamera v klipech** (Záznam -> Kamera, výchozí vypnuto): obraz z kamery se
+  do záznamu skládá rovnou při nahrávání (`renderer/capture.ts` -
+  `startClipCamera`, stejné skládání jako kamera ve vysílání -
+  `renderer/liveCompositor.ts`). Kamera je ve STEJNÉM snímku jako hra, takže
+  v klipu sedí přesně (nic se dodatečně nezarovnává a klip se při uložení
+  znovu nekóduje). Výběr kamery, roh, velikost, tvar, zrcadlo a náhled; poloha
+  / velikost / tvar / jiná kamera se mění za běhu povelem `clip-camera` (bez
+  restartu zásobníku), zapnutí / vypnutí snímání rozjede znovu (jako změna
+  kvality). Vypnutá = kamera se vůbec neotevře. Stav (zapíná se / nahrává se
+  / nejde) je v nastavení; nejde-li (obsazená, odpojená), nahrává se dál bez ní,
+  upozornění jednou a nový pokus každých 15 s. Vysílání bere obrazovku bez
+  téhle kamery (má svou scénu). Když obraz hry stojí (snímání pak nové snímky
+  neposílá), skládání kameru dokresluje samo - v záznamu ani ve vysílání
+  nezamrzne (časy snímků jen rostou). Odpojená kamera zmizí z obrazu (dřív
+  ve vysílání zůstal zamrzlý obličej).
+- **Nahrát na Kine i během hraní**: „Nahrát hned" u klipu, který čeká na konec
+  hry (karta v knihovně i lišta přehrávače), ho pošle hned (`uploader.enqueue`
+  s `now` - vynucené nahrání hra nepozastaví, jen chybějící připojení).
+  Automatické nahrávání během hry dál čeká.
+- **Hlavička přehrávače u klipu**: hvězdička (Oblíbené) a Nahrát na Kine (stav
+  nahrávání / „Nahrát hned") přímo v liště nad klipem.
+- Testy: e2e `clipCameraOk` (falešná kamera Chromia: kamera vpravo dole v klipu,
+  přesun doleva nahoru za běhu bez restartu, kamera se v klipu hýbe, vypnutí),
+  `playerHeadOk` (hvězdička mění oblíbené, Nahrát, „Nahrát hned" v liště i na
+  kartě), `settingsSectionsOk` (Záznam má šest oddílů), unit testy nastavení
+  kamery a vynuceného nahrávání během hry.
